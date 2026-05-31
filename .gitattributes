@@ -1,0 +1,17 @@
+*.cpp text eol=lf
+*.h text eol=lf
+*.cs text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.ini text eol=crlf
+*.uproject text eol=crlf
+*.uplugin text eol=crlf
+
+*.uasset binary
+*.umap binary
+*.ubulk binary
+*.uexp binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary

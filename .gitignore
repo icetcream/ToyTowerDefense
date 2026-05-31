@@ -1,0 +1,48 @@
+# Unreal Engine generated folders
+/Binaries/
+/Intermediate/
+/Saved/
+/DerivedDataCache/
+/Build/
+
+# Plugin generated folders
+/Plugins/**/Binaries/
+/Plugins/**/Intermediate/
+/Plugins/**/Saved/
+
+# IDE and generated project files
+/.vs/
+/.idea/
+/.vscode/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj/
+*.xcworkspace/
+*.code-workspace
+*.DotSettings.user
+.vsconfig
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Unreal local logs, backups, autosaves, screenshots, and crash data
+*.log
+*.tmp
+*.bak
+*.backup
+*.autosave
+*.dmp
+CrashReportClient/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Keep UE project content/config/source/assets tracked.
+# Do not ignore binary content assets such as .uasset and .umap.
