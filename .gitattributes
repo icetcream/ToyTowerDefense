@@ -6,7 +6,12 @@
 *.ini text eol=crlf
 *.uproject text eol=crlf
 *.uplugin text eol=crlf
+*.ps1 text eol=crlf
+*.modules text eol=crlf
+*.target text eol=crlf
 
+*.dll binary
+*.pdb binary
 *.uasset binary
 *.umap binary
 *.ubulk binary

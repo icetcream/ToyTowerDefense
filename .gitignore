@@ -1,12 +1,24 @@
 # Unreal Engine generated folders
-/Binaries/
+/Binaries/*
+!/Binaries/
+!/Binaries/Win64/
+/Binaries/Win64/*
+!/Binaries/Win64/ToyTowerDefenseEditor.target
+!/Binaries/Win64/UnrealEditor-ToyTowerDefense.dll
+!/Binaries/Win64/UnrealEditor.modules
 /Intermediate/
 /Saved/
 /DerivedDataCache/
 /Build/
 
 # Plugin generated folders
-/Plugins/**/Binaries/
+/Plugins/**/Binaries/*
+!/Plugins/GameplayMessageRouter/Binaries/
+!/Plugins/GameplayMessageRouter/Binaries/Win64/
+/Plugins/GameplayMessageRouter/Binaries/Win64/*
+!/Plugins/GameplayMessageRouter/Binaries/Win64/UnrealEditor-GameplayMessageNodes.dll
+!/Plugins/GameplayMessageRouter/Binaries/Win64/UnrealEditor-GameplayMessageRuntime.dll
+!/Plugins/GameplayMessageRouter/Binaries/Win64/UnrealEditor.modules
 /Plugins/**/Intermediate/
 /Plugins/**/Saved/
 
@@ -49,6 +61,7 @@ desktop.ini
 !/docs/
 !/docs/策划须知.md
 !/docs/如何配置.md
+!/docs/免编译打开说明.md
 
 # Keep UE project content/config/source/assets tracked.
 # Do not ignore binary content assets such as .uasset and .umap.
