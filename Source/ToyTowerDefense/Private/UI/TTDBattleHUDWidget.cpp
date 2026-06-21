@@ -20,7 +20,7 @@
 
 namespace
 {
-	UTextBlock* MakeText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
+	UTextBlock* MakeBattleHUDText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(TextValue);
@@ -28,7 +28,7 @@ namespace
 		return Text;
 	}
 
-	UBorder* MakePanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
+	UBorder* MakeBattleHUDPanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
 	{
 		UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		TTDUIStyle::ApplyPanel(Panel, Color, Padding);
@@ -59,7 +59,7 @@ namespace
 			FText::FromString(TTDUIDisplayNames::JoinPartStacks(GameInstance, BuildingDefinition.PartCosts)));
 	}
 
-	int32 FindStackCount(const TArray<FTTDNameStack>& Stacks, const FName Id)
+	int32 FindBattleHUDStackCount(const TArray<FTTDNameStack>& Stacks, const FName Id)
 	{
 		for (const FTTDNameStack& Stack : Stacks)
 		{
@@ -186,7 +186,7 @@ void UTTDBattleHUDWidget::BuildLayout()
 	RootOverlay->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 	WidgetTree->RootWidget = RootOverlay;
 
-	UBorder* TopBar = MakePanel(WidgetTree, FLinearColor(0.98f, 0.91f, 0.74f, 0.92f), FMargin(18.0f, 10.0f));
+	UBorder* TopBar = MakeBattleHUDPanel(WidgetTree, FLinearColor(0.98f, 0.91f, 0.74f, 0.92f), FMargin(18.0f, 10.0f));
 	UOverlaySlot* TopBarSlot = RootOverlay->AddChildToOverlay(TopBar);
 	TopBarSlot->SetHorizontalAlignment(HAlign_Fill);
 	TopBarSlot->SetVerticalAlignment(VAlign_Top);
@@ -195,12 +195,12 @@ void UTTDBattleHUDWidget::BuildLayout()
 	UHorizontalBox* TopRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	TopBar->AddChild(TopRow);
 
-	StateText = MakeText(WidgetTree, FText::GetEmpty(), 18);
-	PhaseText = MakeText(WidgetTree, FText::GetEmpty(), 16);
-	WaveText = MakeText(WidgetTree, FText::GetEmpty(), 16);
-	ProgressText = MakeText(WidgetTree, FText::GetEmpty(), 16);
-	CastleText = MakeText(WidgetTree, FText::GetEmpty(), 16);
-	CurrencyText = MakeText(WidgetTree, FText::GetEmpty(), 16);
+	StateText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 18);
+	PhaseText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16);
+	WaveText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16);
+	ProgressText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16);
+	CastleText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16);
+	CurrencyText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16);
 
 	TArray<UTextBlock*> TopTexts = {
 		StateText.Get(),
@@ -218,7 +218,7 @@ void UTTDBattleHUDWidget::BuildLayout()
 		TextSlot->SetVerticalAlignment(VAlign_Center);
 	}
 
-	UBorder* InfoPanel = MakePanel(WidgetTree, FLinearColor(1.0f, 0.96f, 0.84f, 0.90f), FMargin(16.0f));
+	UBorder* InfoPanel = MakeBattleHUDPanel(WidgetTree, FLinearColor(1.0f, 0.96f, 0.84f, 0.90f), FMargin(16.0f));
 	UOverlaySlot* InfoPanelSlot = RootOverlay->AddChildToOverlay(InfoPanel);
 	InfoPanelSlot->SetHorizontalAlignment(HAlign_Left);
 	InfoPanelSlot->SetVerticalAlignment(VAlign_Top);
@@ -227,13 +227,13 @@ void UTTDBattleHUDWidget::BuildLayout()
 	UVerticalBox* InfoBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	InfoPanel->AddChild(InfoBox);
 
-	SelectedText = MakeText(WidgetTree, FText::GetEmpty(), 16, TTDUIStyle::Ink());
-	InventoryText = MakeText(WidgetTree, FText::GetEmpty(), 15, TTDUIStyle::MutedInk());
+	SelectedText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16, TTDUIStyle::Ink());
+	InventoryText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 15, TTDUIStyle::MutedInk());
 	InfoBox->AddChildToVerticalBox(SelectedText);
 	UVerticalBoxSlot* InventorySlot = InfoBox->AddChildToVerticalBox(InventoryText);
 	InventorySlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
 
-	UBorder* ActionPanel = MakePanel(WidgetTree, FLinearColor(0.77f, 0.55f, 0.33f, 0.94f), FMargin(14.0f));
+	UBorder* ActionPanel = MakeBattleHUDPanel(WidgetTree, FLinearColor(0.77f, 0.55f, 0.33f, 0.94f), FMargin(14.0f));
 	UOverlaySlot* ActionPanelSlot = RootOverlay->AddChildToOverlay(ActionPanel);
 	ActionPanelSlot->SetHorizontalAlignment(HAlign_Right);
 	ActionPanelSlot->SetVerticalAlignment(VAlign_Top);
@@ -242,14 +242,14 @@ void UTTDBattleHUDWidget::BuildLayout()
 	UVerticalBox* ActionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	ActionPanel->AddChild(ActionBox);
 
-	UTextBlock* BuildingTitle = MakeText(WidgetTree, FText::FromString(TEXT("建筑")), 18, TTDUIStyle::Cream(), ETextJustify::Center);
+	UTextBlock* BuildingTitle = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("建筑")), 18, TTDUIStyle::Cream(), ETextJustify::Center);
 	ActionBox->AddChildToVerticalBox(BuildingTitle);
 
 	BuildingList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	UVerticalBoxSlot* BuildingListSlot = ActionBox->AddChildToVerticalBox(BuildingList);
 	BuildingListSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 14.0f));
 
-	UTextBlock* ToyBoxTitle = MakeText(WidgetTree, FText::FromString(TEXT("玩具盒")), 18, TTDUIStyle::Cream(), ETextJustify::Center);
+	UTextBlock* ToyBoxTitle = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("玩具盒")), 18, TTDUIStyle::Cream(), ETextJustify::Center);
 	ActionBox->AddChildToVerticalBox(ToyBoxTitle);
 
 	USizeBox* ToyBoxScrollBounds = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -276,26 +276,26 @@ void UTTDBattleHUDWidget::BuildLayout()
 		CheatButtonSlot->SetPadding(FMargin(0.0f));
 	}
 
-	UBorder* StatusPanel = MakePanel(WidgetTree, FLinearColor(0.98f, 0.91f, 0.74f, 0.92f), FMargin(18.0f, 10.0f));
+	UBorder* StatusPanel = MakeBattleHUDPanel(WidgetTree, FLinearColor(0.98f, 0.91f, 0.74f, 0.92f), FMargin(18.0f, 10.0f));
 	UOverlaySlot* StatusPanelSlot = RootOverlay->AddChildToOverlay(StatusPanel);
 	StatusPanelSlot->SetHorizontalAlignment(HAlign_Left);
 	StatusPanelSlot->SetVerticalAlignment(VAlign_Bottom);
 	StatusPanelSlot->SetPadding(FMargin(16.0f, 0.0f, 0.0f, 16.0f));
 
-	StatusText = MakeText(WidgetTree, FText::FromString(TEXT("准备作战。")), 16, TTDUIStyle::MutedInk());
+	StatusText = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("准备作战。")), 16, TTDUIStyle::MutedInk());
 	StatusPanel->AddChild(StatusText);
 
-	VictoryOverlay = MakePanel(WidgetTree, FLinearColor(0.188f, 0.149f, 0.114f, 0.72f), FMargin(24.0f));
+	VictoryOverlay = MakeBattleHUDPanel(WidgetTree, FLinearColor(0.188f, 0.149f, 0.114f, 0.72f), FMargin(24.0f));
 	VictoryOverlay->SetVisibility(ESlateVisibility::Collapsed);
 	UOverlaySlot* VictoryOverlaySlot = RootOverlay->AddChildToOverlay(VictoryOverlay);
 	VictoryOverlaySlot->SetHorizontalAlignment(HAlign_Fill);
 	VictoryOverlaySlot->SetVerticalAlignment(VAlign_Fill);
 
-	UBorder* VictoryCard = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(30.0f, 24.0f));
+	UBorder* VictoryCard = MakeBattleHUDPanel(WidgetTree, TTDUIStyle::Paper(), FMargin(30.0f, 24.0f));
 	UVerticalBox* VictoryBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	VictoryCard->AddChild(VictoryBox);
-	VictoryBox->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("胜利")), 38, TTDUIStyle::Ink(), ETextJustify::Center));
-	VictoryText = MakeText(WidgetTree, FText::FromString(TEXT("5 秒后返回选关")), 20, TTDUIStyle::MutedInk(), ETextJustify::Center);
+	VictoryBox->AddChildToVerticalBox(MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("胜利")), 38, TTDUIStyle::Ink(), ETextJustify::Center));
+	VictoryText = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("5 秒后返回选关")), 20, TTDUIStyle::MutedInk(), ETextJustify::Center);
 	UVerticalBoxSlot* VictoryTextSlot = VictoryBox->AddChildToVerticalBox(VictoryText);
 	VictoryTextSlot->SetPadding(FMargin(0.0f, 10.0f, 0.0f, 0.0f));
 	VictoryOverlay->AddChild(VictoryCard);
@@ -322,7 +322,7 @@ void UTTDBattleHUDWidget::BuildActionLists()
 	const TArray<FTTDBuildingDefinition> AvailableBuildingDefinitions = BattleSubsystem->GetAvailableBuildingDefinitions();
 	if (AvailableBuildingDefinitions.IsEmpty())
 	{
-		UTextBlock* EmptyBuildingText = MakeText(WidgetTree, FText::FromString(TEXT("当前携带图纸没有可建造的塔。")), 14, TTDUIStyle::Cream(), ETextJustify::Center);
+		UTextBlock* EmptyBuildingText = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("当前携带图纸没有可建造的塔。")), 14, TTDUIStyle::Cream(), ETextJustify::Center);
 		BuildingList->AddChildToVerticalBox(EmptyBuildingText);
 	}
 
@@ -349,32 +349,32 @@ void UTTDBattleHUDWidget::BuildActionLists()
 		UHorizontalBoxSlot* ButtonSlot = BuildingRow->AddChildToHorizontalBox(Button);
 		ButtonSlot->SetVerticalAlignment(VAlign_Center);
 
-		UBorder* CostPanel = MakePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(9.0f, 7.0f));
+		UBorder* CostPanel = MakeBattleHUDPanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(9.0f, 7.0f));
 		CostPanel->SetVisibility(ESlateVisibility::Visible);
 		CostPanel->SetToolTipText(BuildBuildingHoverText(GetGameInstance(), BuildingDefinition));
-		CostPanel->AddChild(MakeText(WidgetTree, BuildBuildingCostText(GetGameInstance(), BuildingDefinition), 14, TTDUIStyle::Ink(), ETextJustify::Center));
+		CostPanel->AddChild(MakeBattleHUDText(WidgetTree, BuildBuildingCostText(GetGameInstance(), BuildingDefinition), 14, TTDUIStyle::Ink(), ETextJustify::Center));
 		UHorizontalBoxSlot* CostSlot = BuildingRow->AddChildToHorizontalBox(CostPanel);
 		CostSlot->SetPadding(FMargin(8.0f, 0.0f, 0.0f, 0.0f));
 		CostSlot->SetVerticalAlignment(VAlign_Center);
 	}
 
-	UTextBlock* ShopTitle = MakeText(WidgetTree, FText::FromString(TEXT("固定商品商店")), 16, TTDUIStyle::Cream(), ETextJustify::Center);
+	UTextBlock* ShopTitle = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("固定商品商店")), 16, TTDUIStyle::Cream(), ETextJustify::Center);
 	ToyBoxList->AddChildToVerticalBox(ShopTitle);
 	const TArray<FTTDNameStack> ToyBoxStacks = BattleSubsystem->GetToyBoxStacks();
 	for (const FTTDToyBoxRewardDefinition& ToyBoxDefinition : BattleSubsystem->GetToyBoxDefinitions())
 	{
 		const FName ToyBoxId = ToyBoxDefinition.ToyBoxId;
-		const int32 OwnedCount = FindStackCount(ToyBoxStacks, ToyBoxId);
+		const int32 OwnedCount = FindBattleHUDStackCount(ToyBoxStacks, ToyBoxId);
 
-		UBorder* CardPanel = MakePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(10.0f));
+		UBorder* CardPanel = MakeBattleHUDPanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(10.0f));
 		UVerticalBoxSlot* CardSlot = ToyBoxList->AddChildToVerticalBox(CardPanel);
 		CardSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 10.0f));
 
 		UVerticalBox* CardBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 		CardPanel->AddChild(CardBox);
 
-		CardBox->AddChildToVerticalBox(MakeText(WidgetTree, TTDUIDisplayNames::ToyBoxName(GetGameInstance(), ToyBoxId, ToyBoxDefinition.DisplayName), 17, TTDUIStyle::Ink(), ETextJustify::Center));
-		UTextBlock* ToyBoxSummaryText = MakeText(
+		CardBox->AddChildToVerticalBox(MakeBattleHUDText(WidgetTree, TTDUIDisplayNames::ToyBoxName(GetGameInstance(), ToyBoxId, ToyBoxDefinition.DisplayName), 17, TTDUIStyle::Ink(), ETextJustify::Center));
+		UTextBlock* ToyBoxSummaryText = MakeBattleHUDText(
 			WidgetTree,
 			FText::Format(FText::FromString(TEXT("价格 {0}  库存 {1}")), FText::AsNumber(ToyBoxDefinition.PurchaseCost), FText::AsNumber(OwnedCount)),
 			14,
@@ -454,7 +454,7 @@ void UTTDBattleHUDWidget::RefreshActionListStates()
 	{
 		const FName ToyBoxId = Pair.Key;
 		FTTDToyBoxActionWidgets& ActionWidgets = Pair.Value;
-		const int32 OwnedCount = FindStackCount(ToyBoxStacks, ToyBoxId);
+		const int32 OwnedCount = FindBattleHUDStackCount(ToyBoxStacks, ToyBoxId);
 
 		if (UTextBlock* SummaryText = ActionWidgets.SummaryText.Get())
 		{

@@ -15,7 +15,7 @@
 
 namespace
 {
-	UDataTable* CreateDataTable(UScriptStruct* RowStruct)
+	UDataTable* CreateResearchTestDataTable(UScriptStruct* RowStruct)
 	{
 		UDataTable* DataTable = NewObject<UDataTable>();
 		DataTable->RowStruct = RowStruct;
@@ -72,9 +72,9 @@ namespace
 		TStrongObjectPtr<UDataTable> ToyBoxTable;
 
 		FTTDResearchTestTables()
-			: PartTable(CreateDataTable(FTTDPartDefinition::StaticStruct()))
-			, DiagramTable(CreateDataTable(FTTDDiagramDefinition::StaticStruct()))
-			, ToyBoxTable(CreateDataTable(FTTDToyBoxDefinition::StaticStruct()))
+			: PartTable(CreateResearchTestDataTable(FTTDPartDefinition::StaticStruct()))
+			, DiagramTable(CreateResearchTestDataTable(FTTDDiagramDefinition::StaticStruct()))
+			, ToyBoxTable(CreateResearchTestDataTable(FTTDToyBoxDefinition::StaticStruct()))
 		{
 			AddResearchRows(PartTable.Get(), DiagramTable.Get(), ToyBoxTable.Get());
 		}
@@ -110,7 +110,7 @@ namespace
 		Settings->DefaultUnlockedPartIds = OriginalDefaultUnlockedPartIds;
 	}
 
-	int32 FindStackCount(const TArray<FTTDNameStack>& Stacks, const FName Id)
+	int32 FindResearchTestStackCount(const TArray<FTTDNameStack>& Stacks, const FName Id)
 	{
 		for (const FTTDNameStack& Stack : Stacks)
 		{
@@ -233,9 +233,9 @@ bool FTTDResearchSubsystemTests::RunTest(const FString& Parameters)
 	TestEqual(TEXT("claim adds spring inventory"), ResearchSubsystem->GetPartCount(TEXT("Spring")), 1);
 	TestEqual(TEXT("claim broadcasts inventory"), InventoryMessageCount, 1);
 	TestEqual(TEXT("claim broadcasts claimed payload"), ClaimMessageCount, 1);
-	TestEqual(TEXT("claim payload includes granted gear"), FindStackCount(LastClaimMessage.GrantedParts, TEXT("Gear")), 1);
-	TestEqual(TEXT("claim payload includes current spring inventory"), FindStackCount(LastClaimMessage.PartInventory, TEXT("Spring")), 1);
-	TestEqual(TEXT("inventory payload includes gear"), FindStackCount(LastInventoryMessage.PartInventory, TEXT("Gear")), 1);
+	TestEqual(TEXT("claim payload includes granted gear"), FindResearchTestStackCount(LastClaimMessage.GrantedParts, TEXT("Gear")), 1);
+	TestEqual(TEXT("claim payload includes current spring inventory"), FindResearchTestStackCount(LastClaimMessage.PartInventory, TEXT("Spring")), 1);
+	TestEqual(TEXT("inventory payload includes gear"), FindResearchTestStackCount(LastInventoryMessage.PartInventory, TEXT("Gear")), 1);
 
 	TestFalse(TEXT("costed diagram still fails with only one gear"), ResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
 

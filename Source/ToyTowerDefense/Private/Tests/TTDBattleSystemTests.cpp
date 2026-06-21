@@ -23,7 +23,7 @@
 
 namespace
 {
-	UDataTable* CreateDataTable(UScriptStruct* RowStruct)
+	UDataTable* CreateBattleTestDataTable(UScriptStruct* RowStruct)
 	{
 		UDataTable* DataTable = NewObject<UDataTable>();
 		DataTable->RowStruct = RowStruct;
@@ -171,7 +171,7 @@ namespace
 
 	UDataTable* CreateBattleObjectPoolDataTable()
 	{
-		return CreateDataTable(FTTDObjectPoolDefinition::StaticStruct());
+		return CreateBattleTestDataTable(FTTDObjectPoolDefinition::StaticStruct());
 	}
 
 	struct FTTDBattleTestTables
@@ -184,12 +184,12 @@ namespace
 		TStrongObjectPtr<UDataTable> HeightEffectTable;
 
 		FTTDBattleTestTables()
-			: LevelTable(CreateDataTable(FTTDBattleLevelDefinition::StaticStruct()))
-			, WaveTable(CreateDataTable(FTTDWaveDefinition::StaticStruct()))
-			, EnemyTable(CreateDataTable(FTTDEnemyDefinition::StaticStruct()))
-			, BuildingTable(CreateDataTable(FTTDBuildingDefinition::StaticStruct()))
-			, ToyBoxRewardTable(CreateDataTable(FTTDToyBoxRewardDefinition::StaticStruct()))
-			, HeightEffectTable(CreateDataTable(FTTDBattleHeightEffectDefinition::StaticStruct()))
+			: LevelTable(CreateBattleTestDataTable(FTTDBattleLevelDefinition::StaticStruct()))
+			, WaveTable(CreateBattleTestDataTable(FTTDWaveDefinition::StaticStruct()))
+			, EnemyTable(CreateBattleTestDataTable(FTTDEnemyDefinition::StaticStruct()))
+			, BuildingTable(CreateBattleTestDataTable(FTTDBuildingDefinition::StaticStruct()))
+			, ToyBoxRewardTable(CreateBattleTestDataTable(FTTDToyBoxRewardDefinition::StaticStruct()))
+			, HeightEffectTable(CreateBattleTestDataTable(FTTDBattleHeightEffectDefinition::StaticStruct()))
 		{
 		}
 

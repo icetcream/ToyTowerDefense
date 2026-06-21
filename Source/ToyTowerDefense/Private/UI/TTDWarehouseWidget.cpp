@@ -20,14 +20,14 @@
 
 namespace
 {
-	UBorder* MakePanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
+	UBorder* MakeWarehousePanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
 	{
 		UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		TTDUIStyle::ApplyPanel(Panel, Color, Padding);
 		return Panel;
 	}
 
-	UTextBlock* MakeText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
+	UTextBlock* MakeWarehouseText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(TextValue);
@@ -35,7 +35,7 @@ namespace
 		return Text;
 	}
 
-	UTTDActionButtonWidget* MakeButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant = ETTDActionButtonVariant::Secondary)
+	UTTDActionButtonWidget* MakeWarehouseButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant = ETTDActionButtonVariant::Secondary)
 	{
 		UTTDActionButtonWidget* Button = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
 		Button->Configure(Label, bEnabled, Delegate, Variant);
@@ -47,7 +47,7 @@ void UTTDWarehouseWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
-	UBorder* Root = MakePanel(WidgetTree, TTDUIStyle::Backdrop(), FMargin(32.0f, 28.0f));
+	UBorder* Root = MakeWarehousePanel(WidgetTree, TTDUIStyle::Backdrop(), FMargin(32.0f, 28.0f));
 	WidgetTree->RootWidget = Root;
 
 	UVerticalBox* RootBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
@@ -58,15 +58,15 @@ void UTTDWarehouseWidget::NativeOnInitialized()
 
 	FSimpleDelegate BackDelegate;
 	BackDelegate.BindUObject(this, &UTTDWarehouseWidget::HandleBackClicked);
-	HeaderRow->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("返回")), true, BackDelegate, ETTDActionButtonVariant::Danger));
+	HeaderRow->AddChildToHorizontalBox(MakeWarehouseButton(WidgetTree, FText::FromString(TEXT("返回")), true, BackDelegate, ETTDActionButtonVariant::Danger));
 
-	UTextBlock* Title = MakeText(WidgetTree, FText::FromString(TEXT("仓库")), 34, TTDUIStyle::Ink(), ETextJustify::Center);
+	UTextBlock* Title = MakeWarehouseText(WidgetTree, FText::FromString(TEXT("仓库")), 34, TTDUIStyle::Ink(), ETextJustify::Center);
 	UHorizontalBoxSlot* TitleSlot = HeaderRow->AddChildToHorizontalBox(Title);
 	TitleSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	TitleSlot->SetVerticalAlignment(VAlign_Center);
 	TitleSlot->SetPadding(FMargin(18.0f, 0.0f, 0.0f, 0.0f));
 
-	UBorder* ContentPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(18.0f));
+	UBorder* ContentPanel = MakeWarehousePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(18.0f));
 	UVerticalBoxSlot* ContentPanelSlot = RootBox->AddChildToVerticalBox(ContentPanel);
 	ContentPanelSlot->SetPadding(FMargin(0.0f, 22.0f, 0.0f, 0.0f));
 	ContentPanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -151,7 +151,7 @@ void UTTDWarehouseWidget::RefreshContent()
 	const UTTDResearchSubsystem* ResearchSubsystem = GetResearchSubsystem();
 	if (!ResearchSubsystem)
 	{
-		ContentBox->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("研究所系统未初始化。")), 18, TTDUIStyle::Danger()));
+		ContentBox->AddChildToVerticalBox(MakeWarehouseText(WidgetTree, FText::FromString(TEXT("研究所系统未初始化。")), 18, TTDUIStyle::Danger()));
 		return;
 	}
 
@@ -162,11 +162,11 @@ void UTTDWarehouseWidget::RefreshContent()
 
 void UTTDWarehouseWidget::AddPartInventorySection(const UTTDResearchSubsystem& ResearchSubsystem)
 {
-	UBorder* SectionPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(18.0f));
+	UBorder* SectionPanel = MakeWarehousePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(18.0f));
 	ContentBox->AddChildToVerticalBox(SectionPanel);
 	UVerticalBox* SectionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	SectionPanel->AddChild(SectionBox);
-	SectionBox->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("零件库存")), 22, TTDUIStyle::Ink()));
+	SectionBox->AddChildToVerticalBox(MakeWarehouseText(WidgetTree, FText::FromString(TEXT("零件库存")), 22, TTDUIStyle::Ink()));
 
 	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
 	UVerticalBoxSlot* GridSlot = SectionBox->AddChildToVerticalBox(Grid);
@@ -175,7 +175,7 @@ void UTTDWarehouseWidget::AddPartInventorySection(const UTTDResearchSubsystem& R
 	const TArray<FTTDNameStack> Stacks = ResearchSubsystem.GetPartInventory();
 	if (Stacks.IsEmpty())
 	{
-		Grid->AddChildToUniformGrid(MakeText(WidgetTree, FText::FromString(TEXT("暂无零件")), 17, TTDUIStyle::MutedInk()), 0, 0);
+		Grid->AddChildToUniformGrid(MakeWarehouseText(WidgetTree, FText::FromString(TEXT("暂无零件")), 17, TTDUIStyle::MutedInk()), 0, 0);
 		return;
 	}
 
@@ -184,8 +184,8 @@ void UTTDWarehouseWidget::AddPartInventorySection(const UTTDResearchSubsystem& R
 		const FTTDNameStack& Stack = Stacks[Index];
 		if (!Stack.Id.IsNone() && Stack.Count > 0)
 		{
-			UBorder* Card = MakePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(14.0f, 10.0f));
-			Card->AddChild(MakeText(
+			UBorder* Card = MakeWarehousePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(14.0f, 10.0f));
+			Card->AddChild(MakeWarehouseText(
 				WidgetTree,
 				FText::Format(
 					FText::FromString(TEXT("{0}\nx{1}")),
@@ -201,13 +201,13 @@ void UTTDWarehouseWidget::AddPartInventorySection(const UTTDResearchSubsystem& R
 
 void UTTDWarehouseWidget::AddCollectionSection(const FText& Title, const TArray<FTTDCollectionEntry>& Entries, const TCHAR* EmptyText)
 {
-	UBorder* SectionPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(18.0f));
+	UBorder* SectionPanel = MakeWarehousePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(18.0f));
 	UVerticalBoxSlot* SectionSlot = ContentBox->AddChildToVerticalBox(SectionPanel);
 	SectionSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
 
 	UVerticalBox* SectionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	SectionPanel->AddChild(SectionBox);
-	SectionBox->AddChildToVerticalBox(MakeText(WidgetTree, Title, 22, TTDUIStyle::Ink()));
+	SectionBox->AddChildToVerticalBox(MakeWarehouseText(WidgetTree, Title, 22, TTDUIStyle::Ink()));
 
 	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
 	UVerticalBoxSlot* GridSlot = SectionBox->AddChildToVerticalBox(Grid);
@@ -218,8 +218,8 @@ void UTTDWarehouseWidget::AddCollectionSection(const FText& Title, const TArray<
 	{
 		if (Entry.bUnlocked)
 		{
-			UBorder* Card = MakePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(14.0f, 10.0f));
-			Card->AddChild(MakeText(WidgetTree, Entry.DisplayName, 17, TTDUIStyle::Ink(), ETextJustify::Center));
+			UBorder* Card = MakeWarehousePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(14.0f, 10.0f));
+			Card->AddChild(MakeWarehouseText(WidgetTree, Entry.DisplayName, 17, TTDUIStyle::Ink(), ETextJustify::Center));
 			Grid->AddChildToUniformGrid(Card, VisibleIndex / 4, VisibleIndex % 4);
 			++VisibleIndex;
 		}
@@ -227,6 +227,6 @@ void UTTDWarehouseWidget::AddCollectionSection(const FText& Title, const TArray<
 
 	if (VisibleIndex == 0)
 	{
-		Grid->AddChildToUniformGrid(MakeText(WidgetTree, FText::FromString(EmptyText), 17, TTDUIStyle::MutedInk()), 0, 0);
+		Grid->AddChildToUniformGrid(MakeWarehouseText(WidgetTree, FText::FromString(EmptyText), 17, TTDUIStyle::MutedInk()), 0, 0);
 	}
 }

@@ -18,14 +18,14 @@
 
 namespace
 {
-	UBorder* MakePanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
+	UBorder* MakeBattlePreparationPanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
 	{
 		UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		TTDUIStyle::ApplyPanel(Panel, Color, Padding);
 		return Panel;
 	}
 
-	UTextBlock* MakeText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
+	UTextBlock* MakeBattlePreparationText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(TextValue);
@@ -33,7 +33,7 @@ namespace
 		return Text;
 	}
 
-	UTTDActionButtonWidget* MakeButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant = ETTDActionButtonVariant::Secondary)
+	UTTDActionButtonWidget* MakeBattlePreparationButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant = ETTDActionButtonVariant::Secondary)
 	{
 		UTTDActionButtonWidget* Button = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
 		Button->Configure(Label, bEnabled, Delegate, Variant);
@@ -50,7 +50,7 @@ namespace
 		return TTDUIDisplayNames::DisplayNameOrFallback(LevelDefinition.DisplayName, LevelDefinition.LevelId);
 	}
 
-	TSet<FName> BuildRequiredBattleDiagramIds(const UTTDBattleWorldSubsystem* BattleSubsystem)
+	TSet<FName> BuildPreparationRequiredBattleDiagramIds(const UTTDBattleWorldSubsystem* BattleSubsystem)
 	{
 		TSet<FName> Result;
 		if (!BattleSubsystem)
@@ -68,7 +68,7 @@ namespace
 		return Result;
 	}
 
-	bool IsUsableBattleDiagram(const FTTDCollectionEntry& Entry, const TSet<FName>& RequiredBattleDiagramIds)
+	bool IsPreparationUsableBattleDiagram(const FTTDCollectionEntry& Entry, const TSet<FName>& RequiredBattleDiagramIds)
 	{
 		return Entry.bUnlocked && (RequiredBattleDiagramIds.IsEmpty() || RequiredBattleDiagramIds.Contains(Entry.ItemId));
 	}
@@ -120,13 +120,13 @@ void UTTDBattlePreparationWidget::NativeTick(const FGeometry& MyGeometry, const 
 
 void UTTDBattlePreparationWidget::BuildLayout()
 {
-	UBorder* Root = MakePanel(WidgetTree, TTDUIStyle::Backdrop(), FMargin(32.0f, 28.0f));
+	UBorder* Root = MakeBattlePreparationPanel(WidgetTree, TTDUIStyle::Backdrop(), FMargin(32.0f, 28.0f));
 	WidgetTree->RootWidget = Root;
 
 	UVerticalBox* RootBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Root->AddChild(RootBox);
 
-	TitleText = MakeText(WidgetTree, FText::FromString(TEXT("关卡准备")), 34, TTDUIStyle::Ink(), ETextJustify::Center);
+	TitleText = MakeBattlePreparationText(WidgetTree, FText::FromString(TEXT("关卡准备")), 34, TTDUIStyle::Ink(), ETextJustify::Center);
 	UVerticalBoxSlot* TitleSlot = RootBox->AddChildToVerticalBox(TitleText);
 	TitleSlot->SetHorizontalAlignment(HAlign_Center);
 	TitleSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 18.0f));
@@ -135,14 +135,14 @@ void UTTDBattlePreparationWidget::BuildLayout()
 	UVerticalBoxSlot* BodySlot = RootBox->AddChildToVerticalBox(BodyRow);
 	BodySlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-	UBorder* DiagramPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(14.0f));
+	UBorder* DiagramPanel = MakeBattlePreparationPanel(WidgetTree, TTDUIStyle::Paper(), FMargin(14.0f));
 	UHorizontalBoxSlot* DiagramPanelSlot = BodyRow->AddChildToHorizontalBox(DiagramPanel);
 	DiagramPanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	DiagramPanelSlot->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
 
 	UVerticalBox* DiagramBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	DiagramPanel->AddChild(DiagramBox);
-	DiagramCountText = MakeText(WidgetTree, FText::GetEmpty(), 18);
+	DiagramCountText = MakeBattlePreparationText(WidgetTree, FText::GetEmpty(), 18);
 	DiagramBox->AddChildToVerticalBox(DiagramCountText);
 	UScrollBox* DiagramScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
 	UVerticalBoxSlot* DiagramScrollSlot = DiagramBox->AddChildToVerticalBox(DiagramScroll);
@@ -151,14 +151,14 @@ void UTTDBattlePreparationWidget::BuildLayout()
 	DiagramList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	DiagramScroll->AddChild(DiagramList);
 
-	UBorder* ToyBoxPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(14.0f));
+	UBorder* ToyBoxPanel = MakeBattlePreparationPanel(WidgetTree, TTDUIStyle::Paper(), FMargin(14.0f));
 	UHorizontalBoxSlot* ToyBoxPanelSlot = BodyRow->AddChildToHorizontalBox(ToyBoxPanel);
 	ToyBoxPanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	ToyBoxPanelSlot->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
 
 	UVerticalBox* ToyBoxBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	ToyBoxPanel->AddChild(ToyBoxBox);
-	ToyBoxCountText = MakeText(WidgetTree, FText::GetEmpty(), 18);
+	ToyBoxCountText = MakeBattlePreparationText(WidgetTree, FText::GetEmpty(), 18);
 	ToyBoxBox->AddChildToVerticalBox(ToyBoxCountText);
 	UScrollBox* ToyBoxScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
 	UVerticalBoxSlot* ToyBoxScrollSlot = ToyBoxBox->AddChildToVerticalBox(ToyBoxScroll);
@@ -167,11 +167,11 @@ void UTTDBattlePreparationWidget::BuildLayout()
 	ToyBoxList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	ToyBoxScroll->AddChild(ToyBoxList);
 
-	UBorder* PreviewPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(16.0f));
+	UBorder* PreviewPanel = MakeBattlePreparationPanel(WidgetTree, TTDUIStyle::Cream(), FMargin(16.0f));
 	UHorizontalBoxSlot* PreviewPanelSlot = BodyRow->AddChildToHorizontalBox(PreviewPanel);
 	PreviewPanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-	PreviewText = MakeText(WidgetTree, FText::FromString(TEXT("点击图纸或玩具盒查看内容。")), 16, TTDUIStyle::MutedInk());
+	PreviewText = MakeBattlePreparationText(WidgetTree, FText::FromString(TEXT("点击图纸或玩具盒查看内容。")), 16, TTDUIStyle::MutedInk());
 	PreviewPanel->AddChild(PreviewText);
 
 	UHorizontalBox* FooterRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -180,9 +180,9 @@ void UTTDBattlePreparationWidget::BuildLayout()
 
 	FSimpleDelegate BackDelegate;
 	BackDelegate.BindUObject(this, &UTTDBattlePreparationWidget::HandleBackClicked);
-	FooterRow->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("返回选关")), true, BackDelegate, ETTDActionButtonVariant::Danger));
+	FooterRow->AddChildToHorizontalBox(MakeBattlePreparationButton(WidgetTree, FText::FromString(TEXT("返回选关")), true, BackDelegate, ETTDActionButtonVariant::Danger));
 
-	StatusText = MakeText(WidgetTree, FText::GetEmpty(), 16, TTDUIStyle::MutedInk(), ETextJustify::Center);
+	StatusText = MakeBattlePreparationText(WidgetTree, FText::GetEmpty(), 16, TTDUIStyle::MutedInk(), ETextJustify::Center);
 	UHorizontalBoxSlot* StatusSlot = FooterRow->AddChildToHorizontalBox(StatusText);
 	StatusSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	StatusSlot->SetPadding(FMargin(18.0f, 0.0f));
@@ -190,7 +190,7 @@ void UTTDBattlePreparationWidget::BuildLayout()
 
 	FSimpleDelegate StartDelegate;
 	StartDelegate.BindUObject(this, &UTTDBattlePreparationWidget::HandleStartClicked);
-	FooterRow->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("开始游戏")), true, StartDelegate, ETTDActionButtonVariant::Primary));
+	FooterRow->AddChildToHorizontalBox(MakeBattlePreparationButton(WidgetTree, FText::FromString(TEXT("开始游戏")), true, StartDelegate, ETTDActionButtonVariant::Primary));
 
 	bLayoutBuilt = true;
 }
@@ -217,7 +217,7 @@ void UTTDBattlePreparationWidget::LoadData()
 			}
 		}
 	}
-	const TSet<FName> RequiredBattleDiagramIds = BuildRequiredBattleDiagramIds(BattleSubsystem);
+	const TSet<FName> RequiredBattleDiagramIds = BuildPreparationRequiredBattleDiagramIds(BattleSubsystem);
 
 	if (!bFoundLevel)
 	{
@@ -231,7 +231,7 @@ void UTTDBattlePreparationWidget::LoadData()
 	{
 		for (const FTTDCollectionEntry& Entry : ResearchSubsystem->GetCollectionEntries(ETTDCollectionCategory::Diagram))
 		{
-			if (IsUsableBattleDiagram(Entry, RequiredBattleDiagramIds))
+			if (IsPreparationUsableBattleDiagram(Entry, RequiredBattleDiagramIds))
 			{
 				DiagramEntries.Add(Entry);
 			}
@@ -283,7 +283,7 @@ void UTTDBattlePreparationWidget::RebuildOptionLists()
 				bSelected ? FText::FromString(TEXT("[已选] ")) : FText::GetEmpty(),
 				Entry.DisplayName,
 				FText::FromString(JoinPartNames(GetGameInstance(), Entry.PartIds)));
-			UVerticalBoxSlot* EntrySlot = DiagramList->AddChildToVerticalBox(MakeButton(WidgetTree, Label, bCanSelect, ToggleDelegate));
+			UVerticalBoxSlot* EntrySlot = DiagramList->AddChildToVerticalBox(MakeBattlePreparationButton(WidgetTree, Label, bCanSelect, ToggleDelegate));
 			EntrySlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 		}
 	}
@@ -310,7 +310,7 @@ void UTTDBattlePreparationWidget::RebuildOptionLists()
 				FText::AsNumber(SelectedCount),
 				FText::AsNumber(AvailableStock),
 				FText::FromString(JoinPartNames(GetGameInstance(), Entry.PartIds)));
-			UVerticalBoxSlot* EntrySlot = ToyBoxList->AddChildToVerticalBox(MakeButton(WidgetTree, Label, bCanSelect, ToggleDelegate));
+			UVerticalBoxSlot* EntrySlot = ToyBoxList->AddChildToVerticalBox(MakeBattlePreparationButton(WidgetTree, Label, bCanSelect, ToggleDelegate));
 			EntrySlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 		}
 	}

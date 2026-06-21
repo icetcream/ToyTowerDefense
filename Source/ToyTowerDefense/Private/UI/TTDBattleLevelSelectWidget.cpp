@@ -25,14 +25,14 @@ namespace
 {
 	constexpr int32 MinVisibleMapNodes = 4;
 
-	UBorder* MakePanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
+	UBorder* MakeBattleLevelSelectPanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
 	{
 		UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
 		TTDUIStyle::ApplyPanel(Panel, Color, Padding);
 		return Panel;
 	}
 
-	UTextBlock* MakeText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
+	UTextBlock* MakeBattleLevelSelectText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
 	{
 		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 		Text->SetText(TextValue);
@@ -40,7 +40,7 @@ namespace
 		return Text;
 	}
 
-	UTTDActionButtonWidget* MakeButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant)
+	UTTDActionButtonWidget* MakeBattleLevelSelectButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant)
 	{
 		UTTDActionButtonWidget* Button = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
 		Button->Configure(Label, bEnabled, Delegate, Variant);
@@ -61,14 +61,14 @@ namespace
 
 	UBorder* MakeTextPanel(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& PanelColor = TTDUIStyle::LightPaper())
 	{
-		UBorder* Panel = MakePanel(WidgetTree, PanelColor, FMargin(12.0f, 10.0f));
-		Panel->AddChild(MakeText(WidgetTree, TextValue, FontSize, TTDUIStyle::Ink()));
+		UBorder* Panel = MakeBattleLevelSelectPanel(WidgetTree, PanelColor, FMargin(12.0f, 10.0f));
+		Panel->AddChild(MakeBattleLevelSelectText(WidgetTree, TextValue, FontSize, TTDUIStyle::Ink()));
 		return Panel;
 	}
 
 	void AddSectionTitle(UWidgetTree* WidgetTree, UVerticalBox* Box, const FText& Title)
 	{
-		UTextBlock* Text = MakeText(WidgetTree, Title, 17, TTDUIStyle::Ink());
+		UTextBlock* Text = MakeBattleLevelSelectText(WidgetTree, Title, 17, TTDUIStyle::Ink());
 		UVerticalBoxSlot* Slot = Box->AddChildToVerticalBox(Text);
 		Slot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
 	}
@@ -121,7 +121,7 @@ namespace
 		return FText::FromString(TTDUIDisplayNames::JoinToyBoxStacks(GameInstance, Stacks, TEXT("暂无")));
 	}
 
-	TSet<FName> BuildRequiredBattleDiagramIds(const UTTDBattleWorldSubsystem* BattleSubsystem)
+	TSet<FName> BuildLevelSelectRequiredBattleDiagramIds(const UTTDBattleWorldSubsystem* BattleSubsystem)
 	{
 		TSet<FName> Result;
 		if (!BattleSubsystem)
@@ -139,7 +139,7 @@ namespace
 		return Result;
 	}
 
-	bool IsUsableBattleDiagram(const FTTDCollectionEntry& Entry, const TSet<FName>& RequiredBattleDiagramIds)
+	bool IsLevelSelectUsableBattleDiagram(const FTTDCollectionEntry& Entry, const TSet<FName>& RequiredBattleDiagramIds)
 	{
 		return Entry.bUnlocked && (RequiredBattleDiagramIds.IsEmpty() || RequiredBattleDiagramIds.Contains(Entry.ItemId));
 	}
@@ -167,7 +167,7 @@ void UTTDBattleLevelSelectWidget::NativeTick(const FGeometry& MyGeometry, const 
 
 void UTTDBattleLevelSelectWidget::BuildLayout()
 {
-	UBorder* Root = MakePanel(WidgetTree, TTDUIStyle::Backdrop(), FMargin(18.0f));
+	UBorder* Root = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::Backdrop(), FMargin(18.0f));
 	WidgetTree->RootWidget = Root;
 
 	UVerticalBox* RootBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
@@ -183,17 +183,17 @@ void UTTDBattleLevelSelectWidget::BuildLayout()
 
 	FSimpleDelegate BackDelegate;
 	BackDelegate.BindUObject(this, &UTTDBattleLevelSelectWidget::HandleBackClicked);
-	UTTDActionButtonWidget* BackButton = MakeButton(WidgetTree, FText::FromString(TEXT("‹")), true, BackDelegate, ETTDActionButtonVariant::Danger);
+	UTTDActionButtonWidget* BackButton = MakeBattleLevelSelectButton(WidgetTree, FText::FromString(TEXT("‹")), true, BackDelegate, ETTDActionButtonVariant::Danger);
 	UHorizontalBoxSlot* BackSlot = TopRow->AddChildToHorizontalBox(BackButton);
 	BackSlot->SetVerticalAlignment(VAlign_Center);
 
-	UTextBlock* Title = MakeText(WidgetTree, FText::FromString(TEXT("玩具工坊防线")), 24, TTDUIStyle::Ink());
+	UTextBlock* Title = MakeBattleLevelSelectText(WidgetTree, FText::FromString(TEXT("玩具工坊防线")), 24, TTDUIStyle::Ink());
 	UHorizontalBoxSlot* TitleSlot = TopRow->AddChildToHorizontalBox(Title);
 	TitleSlot->SetPadding(FMargin(14.0f, 0.0f, 12.0f, 0.0f));
 	TitleSlot->SetVerticalAlignment(VAlign_Center);
 
-	UBorder* ChapterBadge = MakePanel(WidgetTree, FLinearColor(1.0f, 0.91f, 0.67f, 1.0f), FMargin(12.0f, 7.0f));
-	ChapterBadge->AddChild(MakeText(WidgetTree, FText::FromString(TEXT("章节 1：玩具桌 1")), 16, TTDUIStyle::Ink(), ETextJustify::Center));
+	UBorder* ChapterBadge = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(1.0f, 0.91f, 0.67f, 1.0f), FMargin(12.0f, 7.0f));
+	ChapterBadge->AddChild(MakeBattleLevelSelectText(WidgetTree, FText::FromString(TEXT("章节 1：玩具桌 1")), 16, TTDUIStyle::Ink(), ETextJustify::Center));
 	UHorizontalBoxSlot* ChapterSlot = TopRow->AddChildToHorizontalBox(ChapterBadge);
 	ChapterSlot->SetVerticalAlignment(VAlign_Center);
 
@@ -201,8 +201,8 @@ void UTTDBattleLevelSelectWidget::BuildLayout()
 	UHorizontalBoxSlot* FillerSlot = TopRow->AddChildToHorizontalBox(TopFiller);
 	FillerSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-	UBorder* ResourceBadge = MakePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(12.0f, 7.0f));
-	ToyBoxTotalText = MakeText(WidgetTree, FText::FromString(TEXT("玩具盒总数：0")), 16, TTDUIStyle::Ink(), ETextJustify::Center);
+	UBorder* ResourceBadge = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(12.0f, 7.0f));
+	ToyBoxTotalText = MakeBattleLevelSelectText(WidgetTree, FText::FromString(TEXT("玩具盒总数：0")), 16, TTDUIStyle::Ink(), ETextJustify::Center);
 	ResourceBadge->AddChild(ToyBoxTotalText);
 	UHorizontalBoxSlot* ResourceSlot = TopRow->AddChildToHorizontalBox(ResourceBadge);
 	ResourceSlot->SetVerticalAlignment(VAlign_Center);
@@ -211,18 +211,18 @@ void UTTDBattleLevelSelectWidget::BuildLayout()
 	UVerticalBoxSlot* MainSlot = RootBox->AddChildToVerticalBox(MainRow);
 	MainSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-	UBorder* MapFrame = MakePanel(WidgetTree, TTDUIStyle::DarkWood(), FMargin(5.0f));
+	UBorder* MapFrame = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::DarkWood(), FMargin(5.0f));
 	UHorizontalBoxSlot* MapFrameSlot = MainRow->AddChildToHorizontalBox(MapFrame);
 	MapFrameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	MapFrameSlot->SetPadding(FMargin(0.0f, 0.0f, 16.0f, 0.0f));
 
-	UBorder* MapSurface = MakePanel(WidgetTree, FLinearColor(0.83f, 0.52f, 0.27f, 1.0f), FMargin(0.0f));
+	UBorder* MapSurface = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(0.83f, 0.52f, 0.27f, 1.0f), FMargin(0.0f));
 	MapFrame->AddChild(MapSurface);
 
 	MapCanvas = WidgetTree->ConstructWidget<UCanvasPanel>(UCanvasPanel::StaticClass());
 	MapSurface->AddChild(MapCanvas);
 
-	UBorder* PanelFrame = MakePanel(WidgetTree, TTDUIStyle::DarkWood(), FMargin(5.0f));
+	UBorder* PanelFrame = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::DarkWood(), FMargin(5.0f));
 	UHorizontalBoxSlot* PanelFrameSlot = MainRow->AddChildToHorizontalBox(PanelFrame);
 	PanelFrameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
 
@@ -230,31 +230,31 @@ void UTTDBattleLevelSelectWidget::BuildLayout()
 	PanelSize->SetWidthOverride(430.0f);
 	PanelFrame->AddChild(PanelSize);
 
-	UBorder* Panel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(0.0f));
+	UBorder* Panel = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::Paper(), FMargin(0.0f));
 	PanelSize->AddChild(Panel);
 
 	UVerticalBox* PanelBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Panel->AddChild(PanelBox);
 
-	UBorder* PanelHead = MakePanel(WidgetTree, FLinearColor(0.96f, 0.82f, 0.52f, 1.0f), FMargin(18.0f, 14.0f, 18.0f, 12.0f));
+	UBorder* PanelHead = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(0.96f, 0.82f, 0.52f, 1.0f), FMargin(18.0f, 14.0f, 18.0f, 12.0f));
 	PanelBox->AddChildToVerticalBox(PanelHead);
 
 	UVerticalBox* HeadBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	PanelHead->AddChild(HeadBox);
-	PanelModeText = MakeText(WidgetTree, FText::FromString(TEXT("关卡侦察")), 14, TTDUIStyle::MutedInk());
+	PanelModeText = MakeBattleLevelSelectText(WidgetTree, FText::FromString(TEXT("关卡侦察")), 14, TTDUIStyle::MutedInk());
 	HeadBox->AddChildToVerticalBox(PanelModeText);
 
 	UHorizontalBox* StageRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	UVerticalBoxSlot* StageRowSlot = HeadBox->AddChildToVerticalBox(StageRow);
 	StageRowSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 0.0f));
 
-	StageNameText = MakeText(WidgetTree, FText::GetEmpty(), 28, TTDUIStyle::Ink());
+	StageNameText = MakeBattleLevelSelectText(WidgetTree, FText::GetEmpty(), 28, TTDUIStyle::Ink());
 	UHorizontalBoxSlot* StageNameSlot = StageRow->AddChildToHorizontalBox(StageNameText);
 	StageNameSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	StageNameSlot->SetVerticalAlignment(VAlign_Center);
 
-	UBorder* StageBadgePanel = MakePanel(WidgetTree, TTDUIStyle::Blue(), FMargin(10.0f, 5.0f));
-	StageBadgeText = MakeText(WidgetTree, FText::FromString(TEXT("玩具桌 1")), 13, FLinearColor::White, ETextJustify::Center);
+	UBorder* StageBadgePanel = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::Blue(), FMargin(10.0f, 5.0f));
+	StageBadgeText = MakeBattleLevelSelectText(WidgetTree, FText::FromString(TEXT("玩具桌 1")), 13, FLinearColor::White, ETextJustify::Center);
 	StageBadgePanel->AddChild(StageBadgeText);
 	UHorizontalBoxSlot* StageBadgeSlot = StageRow->AddChildToHorizontalBox(StageBadgePanel);
 	StageBadgeSlot->SetVerticalAlignment(VAlign_Center);
@@ -271,7 +271,7 @@ void UTTDBattleLevelSelectWidget::BuildLayout()
 	PanelBody = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	BodyPadding->AddChild(PanelBody);
 
-	UBorder* FooterPanel = MakePanel(WidgetTree, FLinearColor(0.969f, 0.875f, 0.675f, 1.0f), FMargin(18.0f, 14.0f, 18.0f, 16.0f));
+	UBorder* FooterPanel = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(0.969f, 0.875f, 0.675f, 1.0f), FMargin(18.0f, 14.0f, 18.0f, 16.0f));
 	PanelBox->AddChildToVerticalBox(FooterPanel);
 
 	PanelFooter = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
@@ -290,7 +290,7 @@ void UTTDBattleLevelSelectWidget::LoadData()
 	{
 		CachedLevels = BattleSubsystem->GetBattleLevelDefinitions();
 	}
-	const TSet<FName> RequiredBattleDiagramIds = BuildRequiredBattleDiagramIds(BattleSubsystem);
+	const TSet<FName> RequiredBattleDiagramIds = BuildLevelSelectRequiredBattleDiagramIds(BattleSubsystem);
 
 	if (!CachedLevels.IsEmpty())
 	{
@@ -314,7 +314,7 @@ void UTTDBattleLevelSelectWidget::LoadData()
 
 	for (const FTTDCollectionEntry& Entry : ResearchSubsystem->GetCollectionEntries(ETTDCollectionCategory::Diagram))
 	{
-		if (IsUsableBattleDiagram(Entry, RequiredBattleDiagramIds))
+		if (IsLevelSelectUsableBattleDiagram(Entry, RequiredBattleDiagramIds))
 		{
 			DiagramEntries.Add(Entry);
 		}
@@ -357,8 +357,8 @@ void UTTDBattleLevelSelectWidget::RebuildMap()
 
 	MapCanvas->ClearChildren();
 
-	UBorder* Label = MakePanel(WidgetTree, FLinearColor(1.0f, 0.976f, 0.914f, 0.78f), FMargin(14.0f, 10.0f));
-	Label->AddChild(MakeText(WidgetTree, FText::FromString(TEXT("当前章节选关")), 16, TTDUIStyle::Ink(), ETextJustify::Center));
+	UBorder* Label = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(1.0f, 0.976f, 0.914f, 0.78f), FMargin(14.0f, 10.0f));
+	Label->AddChild(MakeBattleLevelSelectText(WidgetTree, FText::FromString(TEXT("当前章节选关")), 16, TTDUIStyle::Ink(), ETextJustify::Center));
 	AddCanvasWidget(MapCanvas, Label, FVector2D(0.14f, 0.08f), FVector2D(170.0f, 46.0f));
 
 	struct FDecorationSpec
@@ -376,9 +376,9 @@ void UTTDBattleLevelSelectWidget::RebuildMap()
 
 	for (const FDecorationSpec& Decoration : Decorations)
 	{
-		UBorder* ToyPanel = MakePanel(WidgetTree, FLinearColor(1.0f, 0.976f, 0.914f, 0.46f), FMargin(8.0f));
+		UBorder* ToyPanel = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(1.0f, 0.976f, 0.914f, 0.46f), FMargin(8.0f));
 		ToyPanel->SetVisibility(ESlateVisibility::HitTestInvisible);
-		ToyPanel->AddChild(MakeText(WidgetTree, FText::FromString(Decoration.Label), 16, TTDUIStyle::MutedInk(), ETextJustify::Center));
+		ToyPanel->AddChild(MakeBattleLevelSelectText(WidgetTree, FText::FromString(Decoration.Label), 16, TTDUIStyle::MutedInk(), ETextJustify::Center));
 		AddCanvasWidget(MapCanvas, ToyPanel, Decoration.Anchor, Decoration.Size);
 	}
 
@@ -390,7 +390,7 @@ void UTTDBattleLevelSelectWidget::RebuildMap()
 
 	for (int32 Index = 0; Index < UE_ARRAY_COUNT(PathAnchors); ++Index)
 	{
-		UBorder* PathSegment = MakePanel(WidgetTree, FLinearColor(1.0f, 0.937f, 0.780f, 0.62f), FMargin(0.0f));
+		UBorder* PathSegment = MakeBattleLevelSelectPanel(WidgetTree, FLinearColor(1.0f, 0.937f, 0.780f, 0.62f), FMargin(0.0f));
 		PathSegment->SetVisibility(ESlateVisibility::HitTestInvisible);
 		PathSegment->SetRenderTransformAngle(Index == 0 ? 25.0f : (Index == 1 ? -18.0f : 26.0f));
 		AddCanvasWidget(MapCanvas, PathSegment, PathAnchors[Index], FVector2D(190.0f, 9.0f));
@@ -418,7 +418,7 @@ void UTTDBattleLevelSelectWidget::RebuildMap()
 			});
 		}
 
-		UTTDActionButtonWidget* NodeButton = MakeButton(WidgetTree, LabelText, bHasLevel, NodeDelegate, Variant);
+		UTTDActionButtonWidget* NodeButton = MakeBattleLevelSelectButton(WidgetTree, LabelText, bHasLevel, NodeDelegate, Variant);
 		AddCanvasWidget(MapCanvas, NodeButton, NodeAnchorForIndex(Index), FVector2D(74.0f, 58.0f));
 	}
 }
@@ -468,8 +468,8 @@ void UTTDBattleLevelSelectWidget::RenderScoutPanel()
 	AddSectionTitle(WidgetTree, PanelBody, FText::FromString(TEXT("玩具桌预览")));
 	USizeBox* PreviewSize = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
 	PreviewSize->SetHeightOverride(130.0f);
-	UBorder* PreviewPanel = MakePanel(WidgetTree, TTDUIStyle::Wood(), FMargin(12.0f));
-	PreviewPanel->AddChild(MakeText(WidgetTree, GetLevelDisplayName(SelectedLevelDefinition), 28, TTDUIStyle::Cream(), ETextJustify::Center));
+	UBorder* PreviewPanel = MakeBattleLevelSelectPanel(WidgetTree, TTDUIStyle::Wood(), FMargin(12.0f));
+	PreviewPanel->AddChild(MakeBattleLevelSelectText(WidgetTree, GetLevelDisplayName(SelectedLevelDefinition), 28, TTDUIStyle::Cream(), ETextJustify::Center));
 	PreviewSize->AddChild(PreviewPanel);
 	UVerticalBoxSlot* PreviewSlot = PanelBody->AddChildToVerticalBox(PreviewSize);
 	PreviewSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
@@ -505,7 +505,7 @@ void UTTDBattleLevelSelectWidget::RenderScoutPanel()
 
 	FSimpleDelegate PrepareDelegate;
 	PrepareDelegate.BindUObject(this, &UTTDBattleLevelSelectWidget::HandlePrepareClicked);
-	PanelFooter->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("准备出战")), !SelectedLevelId.IsNone(), PrepareDelegate, ETTDActionButtonVariant::Primary));
+	PanelFooter->AddChildToVerticalBox(MakeBattleLevelSelectButton(WidgetTree, FText::FromString(TEXT("准备出战")), !SelectedLevelId.IsNone(), PrepareDelegate, ETTDActionButtonVariant::Primary));
 }
 
 void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
@@ -525,12 +525,12 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 	UHorizontalBox* ActionRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
 	FSimpleDelegate BackScoutDelegate;
 	BackScoutDelegate.BindUObject(this, &UTTDBattleLevelSelectWidget::HandleBackToScoutClicked);
-	UHorizontalBoxSlot* BackScoutSlot = ActionRow->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("返回侦察")), true, BackScoutDelegate, ETTDActionButtonVariant::Ghost));
+	UHorizontalBoxSlot* BackScoutSlot = ActionRow->AddChildToHorizontalBox(MakeBattleLevelSelectButton(WidgetTree, FText::FromString(TEXT("返回侦察")), true, BackScoutDelegate, ETTDActionButtonVariant::Ghost));
 	BackScoutSlot->SetPadding(FMargin(0.0f, 0.0f, 8.0f, 0.0f));
 
 	FSimpleDelegate PresetDelegate;
 	PresetDelegate.BindUObject(this, &UTTDBattleLevelSelectWidget::HandleUsePresetClicked);
-	ActionRow->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("使用预设")), true, PresetDelegate, ETTDActionButtonVariant::Ghost));
+	ActionRow->AddChildToHorizontalBox(MakeBattleLevelSelectButton(WidgetTree, FText::FromString(TEXT("使用预设")), true, PresetDelegate, ETTDActionButtonVariant::Ghost));
 	PanelBody->AddChildToVerticalBox(ActionRow);
 
 	UVerticalBoxSlot* RequirementSlot = PanelBody->AddChildToVerticalBox(MakeTextPanel(WidgetTree, FText::FromString(TEXT("最低要求：至少 1 张图纸、1 个玩具盒")), 14, FLinearColor(1.0f, 0.976f, 0.914f, 1.0f)));
@@ -562,7 +562,7 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 		}
 
 		UUniformGridSlot* DiagramSlot = DiagramSlots->AddChildToUniformGrid(
-			MakeButton(WidgetTree, SlotText, bFilled, RemoveDelegate, bFilled ? ETTDActionButtonVariant::FilledSlot : ETTDActionButtonVariant::EmptySlot),
+			MakeBattleLevelSelectButton(WidgetTree, SlotText, bFilled, RemoveDelegate, bFilled ? ETTDActionButtonVariant::FilledSlot : ETTDActionButtonVariant::EmptySlot),
 			0,
 			SlotIndex);
 		DiagramSlot->SetHorizontalAlignment(HAlign_Fill);
@@ -580,7 +580,7 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 		{
 			HandleDiagramTabClicked(TabId);
 		});
-		UHorizontalBoxSlot* TabSlot = TabRow->AddChildToHorizontalBox(MakeButton(
+		UHorizontalBoxSlot* TabSlot = TabRow->AddChildToHorizontalBox(MakeBattleLevelSelectButton(
 			WidgetTree,
 			FText::FromName(TabId),
 			true,
@@ -609,7 +609,7 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 				Entry.DisplayName,
 				BuildEntryPartsText(Entry));
 			UUniformGridSlot* CardSlot = DiagramCards->AddChildToUniformGrid(
-				MakeButton(WidgetTree, Label, bCanSelect, DiagramDelegate, bSelected ? ETTDActionButtonVariant::LibraryCardSelected : ETTDActionButtonVariant::LibraryCard),
+				MakeBattleLevelSelectButton(WidgetTree, Label, bCanSelect, DiagramDelegate, bSelected ? ETTDActionButtonVariant::LibraryCardSelected : ETTDActionButtonVariant::LibraryCard),
 				Index / 3,
 				Index % 3);
 			CardSlot->SetHorizontalAlignment(HAlign_Fill);
@@ -649,7 +649,7 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 		}
 
 		UUniformGridSlot* ToyBoxSlot = ToyBoxSlots->AddChildToUniformGrid(
-			MakeButton(WidgetTree, SlotText, bFilled, RemoveDelegate, bFilled ? ETTDActionButtonVariant::FilledSlot : ETTDActionButtonVariant::EmptySlot),
+			MakeBattleLevelSelectButton(WidgetTree, SlotText, bFilled, RemoveDelegate, bFilled ? ETTDActionButtonVariant::FilledSlot : ETTDActionButtonVariant::EmptySlot),
 			0,
 			SlotIndex);
 		ToyBoxSlot->SetHorizontalAlignment(HAlign_Fill);
@@ -677,14 +677,14 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 			FText::AsNumber(AvailableStock),
 			BuildToyBoxCardText(Entry));
 		UUniformGridSlot* CardSlot = ToyBoxCards->AddChildToUniformGrid(
-			MakeButton(WidgetTree, Label, bCanSelect, ToyBoxDelegate, bSelected ? ETTDActionButtonVariant::LibraryCardSelected : ETTDActionButtonVariant::LibraryCard),
+			MakeBattleLevelSelectButton(WidgetTree, Label, bCanSelect, ToyBoxDelegate, bSelected ? ETTDActionButtonVariant::LibraryCardSelected : ETTDActionButtonVariant::LibraryCard),
 			Index / 3,
 			Index % 3);
 		CardSlot->SetHorizontalAlignment(HAlign_Fill);
 	}
 	PanelBody->AddChildToVerticalBox(ToyBoxCards);
 
-	StatusText = MakeText(
+	StatusText = MakeBattleLevelSelectText(
 		WidgetTree,
 		CanStartBattle() ? FText::FromString(TEXT("配置已满足，可以开始战斗。")) : FText::FromString(TEXT("请选择至少 1 张图纸和 1 个玩具盒。")),
 		15,
@@ -695,7 +695,7 @@ void UTTDBattleLevelSelectWidget::RenderLoadoutPanel()
 
 	FSimpleDelegate StartDelegate;
 	StartDelegate.BindUObject(this, &UTTDBattleLevelSelectWidget::HandleStartBattleClicked);
-	PanelFooter->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("开始战斗")), CanStartBattle(), StartDelegate, ETTDActionButtonVariant::Primary));
+	PanelFooter->AddChildToVerticalBox(MakeBattleLevelSelectButton(WidgetTree, FText::FromString(TEXT("开始战斗")), CanStartBattle(), StartDelegate, ETTDActionButtonVariant::Primary));
 }
 
 void UTTDBattleLevelSelectWidget::ResetTemporaryLoadout()
