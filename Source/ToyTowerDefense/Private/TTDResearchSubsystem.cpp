@@ -29,6 +29,35 @@ namespace
 		return false;
 	}
 
+	void AddStackCount(TArray<FTTDNameStack>& Stacks, const FName Id, const int32 Count)
+	{
+		if (Id.IsNone() || Count <= 0)
+		{
+			return;
+		}
+
+		if (FTTDNameStack* ExistingStack = Stacks.FindByPredicate(
+			[Id](const FTTDNameStack& Stack)
+			{
+				return Stack.Id == Id;
+			}))
+		{
+			ExistingStack->Count += Count;
+			return;
+		}
+
+		Stacks.Add(FTTDNameStack(Id, Count));
+	}
+
+	void SortStacksById(TArray<FTTDNameStack>& Stacks)
+	{
+		Stacks.Sort(
+			[](const FTTDNameStack& Left, const FTTDNameStack& Right)
+			{
+				return Left.Id.LexicalLess(Right.Id);
+			});
+	}
+
 	int32 CountCompletedQueueItems(const TArray<FTTDCraftQueueItem>& QueueItems)
 	{
 		int32 Count = 0;
@@ -119,6 +148,46 @@ namespace
 			OutToyBoxes.Add(ToyBox);
 		}
 	}
+
+	void AddDiagramIfMissing(
+		TArray<FTTDDiagramDefinition>& OutDiagrams,
+		const FName DiagramId,
+		const FText& DisplayName,
+		const FText& Description,
+		TArray<FName> RequiredPartIds,
+		TArray<FTTDNameStack> PartCosts)
+	{
+		if (OutDiagrams.ContainsByPredicate(
+			[DiagramId](const FTTDDiagramDefinition& Diagram)
+			{
+				return Diagram.DiagramId == DiagramId;
+			}))
+		{
+			return;
+		}
+
+		FTTDDiagramDefinition Diagram(DiagramId, DisplayName, Description, MoveTemp(RequiredPartIds));
+		Diagram.PartCosts = MoveTemp(PartCosts);
+		OutDiagrams.Add(Diagram);
+	}
+
+	void EnsureBattleDiagramDefinitions(TArray<FTTDDiagramDefinition>& OutDiagrams)
+	{
+		AddDiagramIfMissing(
+			OutDiagrams,
+			TEXT("BasicTower"),
+			Text(TEXT("基础塔图纸")),
+			Text(TEXT("基础攻击塔图纸，需要齿轮与弹簧搭建。")),
+			{ TEXT("Gear"), TEXT("Spring") },
+			{ FTTDNameStack(TEXT("Gear"), 1), FTTDNameStack(TEXT("Spring"), 1) });
+		AddDiagramIfMissing(
+			OutDiagrams,
+			TEXT("ProjectileTower"),
+			Text(TEXT("弹射塔图纸")),
+			Text(TEXT("投射物塔图纸，需要齿轮与弹簧搭建。")),
+			{ TEXT("Gear"), TEXT("Spring") },
+			{ FTTDNameStack(TEXT("Gear"), 1), FTTDNameStack(TEXT("Spring"), 1) });
+	}
 }
 
 void UTTDResearchSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -195,6 +264,7 @@ void UTTDResearchSubsystem::ResetProgress()
 	SaveProgress();
 	BroadcastQueueChanged();
 	BroadcastCollectionChanged();
+	BroadcastInventoryChanged();
 }
 
 TArray<FTTDCollectionEntry> UTTDResearchSubsystem::GetCollectionEntries(const ETTDCollectionCategory Category) const
@@ -215,7 +285,10 @@ TArray<FTTDCollectionEntry> UTTDResearchSubsystem::GetCollectionEntries(const ET
 			Entry.ItemId = Diagram.DiagramId;
 			Entry.DisplayName = Diagram.DisplayName;
 			Entry.Description = Diagram.Description;
-			Entry.PartIds = Diagram.RequiredPartIds;
+			for (const FTTDNameStack& PartCost : GetDiagramPartCosts(Diagram))
+			{
+				Entry.PartIds.Add(PartCost.Id);
+			}
 			Entry.bUnlocked = IsUnlocked(ActiveSave->UnlockedDiagramIds, Diagram.DiagramId);
 			Entries.Add(Entry);
 		}
@@ -244,6 +317,16 @@ TArray<FTTDToyBoxDefinition> UTTDResearchSubsystem::GetToyBoxes() const
 	return ToyBoxes;
 }
 
+TArray<FTTDDiagramDefinition> UTTDResearchSubsystem::GetDiagrams() const
+{
+	return Diagrams;
+}
+
+TArray<FTTDPartDefinition> UTTDResearchSubsystem::GetParts() const
+{
+	return Parts;
+}
+
 TArray<FTTDPartDefinition> UTTDResearchSubsystem::GetPartsForToyBox(const FName ToyBoxId) const
 {
 	TArray<FTTDPartDefinition> Result;
@@ -263,6 +346,44 @@ TArray<FTTDPartDefinition> UTTDResearchSubsystem::GetPartsForToyBox(const FName 
 	}
 
 	return Result;
+}
+
+TArray<FTTDNameStack> UTTDResearchSubsystem::GetPartInventory() const
+{
+	TArray<FTTDNameStack> Result;
+	if (!ActiveSave)
+	{
+		return Result;
+	}
+
+	for (const FTTDNameStack& Stack : ActiveSave->PartInventory)
+	{
+		if (!Stack.Id.IsNone() && Stack.Count > 0)
+		{
+			Result.Add(Stack);
+		}
+	}
+
+	SortStacksById(Result);
+	return Result;
+}
+
+int32 UTTDResearchSubsystem::GetPartCount(const FName PartId) const
+{
+	if (!ActiveSave || PartId.IsNone())
+	{
+		return 0;
+	}
+
+	for (const FTTDNameStack& Stack : ActiveSave->PartInventory)
+	{
+		if (Stack.Id == PartId)
+		{
+			return FMath::Max(0, Stack.Count);
+		}
+	}
+
+	return 0;
 }
 
 TArray<FTTDCraftQueueItem> UTTDResearchSubsystem::GetCraftingQueue() const
@@ -327,10 +448,14 @@ bool UTTDResearchSubsystem::ClaimCompletedToyBox(const FGuid QueueId, TArray<FTT
 	}
 
 	const FTTDToyBoxDefinition* ToyBox = FindToyBox(ClaimedItem.ToyBoxId);
+	TArray<FTTDNameStack> GrantedParts;
 	if (ToyBox)
 	{
 		for (const FName PartId : ToyBox->PossiblePartIds)
 		{
+			AddPartCount(PartId, 1);
+			AddStackCount(GrantedParts, PartId, 1);
+
 			if (!IsUnlocked(ActiveSave->UnlockedPartIds, PartId))
 			{
 				AddUniqueName(ActiveSave->UnlockedPartIds, PartId);
@@ -345,8 +470,10 @@ bool UTTDResearchSubsystem::ClaimCompletedToyBox(const FGuid QueueId, TArray<FTT
 
 	bProgressDirty = true;
 	SaveProgress();
-	BroadcastToyBoxClaimed(ClaimedItem, OutUnlockedParts);
+	SortStacksById(GrantedParts);
+	BroadcastToyBoxClaimed(ClaimedItem, OutUnlockedParts, GrantedParts);
 	BroadcastQueueChanged();
+	BroadcastInventoryChanged();
 	if (OutUnlockedParts.Num() > 0)
 	{
 		BroadcastCollectionChanged();
@@ -354,10 +481,61 @@ bool UTTDResearchSubsystem::ClaimCompletedToyBox(const FGuid QueueId, TArray<FTT
 	return true;
 }
 
+bool UTTDResearchSubsystem::CanResearchDiagram(const FName DiagramId, FText& OutFailureReason) const
+{
+	OutFailureReason = FText::GetEmpty();
+
+	if (!ActiveSave)
+	{
+		OutFailureReason = Text(TEXT("研究所进度尚未初始化"));
+		return false;
+	}
+
+	const FTTDDiagramDefinition* Diagram = FindDiagram(DiagramId);
+	if (!Diagram)
+	{
+		OutFailureReason = Text(TEXT("未找到该图纸"));
+		return false;
+	}
+
+	if (IsUnlocked(ActiveSave->UnlockedDiagramIds, DiagramId))
+	{
+		OutFailureReason = Text(TEXT("该图纸已解锁"));
+		return false;
+	}
+
+	return HasPartCosts(GetDiagramPartCosts(*Diagram), OutFailureReason);
+}
+
+bool UTTDResearchSubsystem::ResearchDiagram(const FName DiagramId, FText& OutFailureReason)
+{
+	if (!CanResearchDiagram(DiagramId, OutFailureReason))
+	{
+		return false;
+	}
+
+	const FTTDDiagramDefinition* Diagram = FindDiagram(DiagramId);
+	if (!ActiveSave || !Diagram)
+	{
+		OutFailureReason = Text(TEXT("研究所进度尚未初始化"));
+		return false;
+	}
+
+	ApplyPartCosts(GetDiagramPartCosts(*Diagram));
+	AddUniqueName(ActiveSave->UnlockedDiagramIds, DiagramId);
+	bProgressDirty = true;
+	SaveProgress();
+	BroadcastCollectionChanged();
+	BroadcastInventoryChanged();
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
 void UTTDResearchSubsystem::BroadcastCurrentResearchState() const
 {
 	BroadcastQueueChanged();
 	BroadcastCollectionChanged();
+	BroadcastInventoryChanged();
 }
 
 void UTTDResearchSubsystem::SeedDefinitions()
@@ -373,6 +551,7 @@ void UTTDResearchSubsystem::SeedDefinitions()
 
 	if (Parts.IsEmpty())
 	{
+		UE_LOG(LogTTDResearch, Warning, TEXT("Research parts DataTable is missing or empty; using C++ fallback sample parts."));
 	Parts = {
 		{ TEXT("Gear"), Text(TEXT("齿轮")), Text(TEXT("基础机械零件，可驱动玩具机关。")) },
 		{ TEXT("Spring"), Text(TEXT("弹簧")), Text(TEXT("为塔防玩具提供弹射和回弹能力。")) },
@@ -387,7 +566,10 @@ void UTTDResearchSubsystem::SeedDefinitions()
 
 	if (Diagrams.IsEmpty())
 	{
+		UE_LOG(LogTTDResearch, Warning, TEXT("Research diagrams DataTable is missing or empty; using C++ fallback sample diagrams."));
 	Diagrams = {
+		{ TEXT("BasicTower"), Text(TEXT("基础塔图纸")), Text(TEXT("基础攻击塔图纸，需要齿轮与弹簧搭建。")), { TEXT("Gear"), TEXT("Spring") } },
+		{ TEXT("ProjectileTower"), Text(TEXT("弹射塔图纸")), Text(TEXT("投射物塔图纸，需要齿轮与弹簧搭建。")), { TEXT("Gear"), TEXT("Spring") } },
 		{ TEXT("JokerTower"), Text(TEXT("小丑塔图纸")), Text(TEXT("基础攻击塔图纸，需要齿轮与弹簧搭建。")), { TEXT("Gear"), TEXT("Spring") } },
 		{ TEXT("BatteryBlaster"), Text(TEXT("电池炮台图纸")), Text(TEXT("能量型炮台图纸，需要电池和齿轮。")), { TEXT("Battery"), TEXT("Gear") } },
 		{ TEXT("RollingGuard"), Text(TEXT("滚轮守卫图纸")), Text(TEXT("控制路径的玩具守卫，需要车轮和弹簧。")), { TEXT("Wheel"), TEXT("Spring") } },
@@ -403,6 +585,7 @@ void UTTDResearchSubsystem::SeedDefinitions()
 
 	if (ToyBoxes.IsEmpty())
 	{
+		UE_LOG(LogTTDResearch, Warning, TEXT("Research toy boxes DataTable is missing or empty; using C++ fallback sample toy boxes."));
 	ToyBoxes = {
 		{ TEXT("BasicToyBox"), Text(TEXT("基础玩具盒")), Text(TEXT("常见零件玩具盒，适合早期制作。")), { TEXT("Gear"), TEXT("Spring"), TEXT("Card") }, 20.0f },
 		{ TEXT("MechanicToyBox"), Text(TEXT("机械玩具盒")), Text(TEXT("偏向机械结构零件的玩具盒。")), { TEXT("Gear"), TEXT("Wheel"), TEXT("Spring") }, 35.0f },
@@ -413,6 +596,8 @@ void UTTDResearchSubsystem::SeedDefinitions()
 		{ TEXT("GuardToyBox"), Text(TEXT("守卫玩具盒")), Text(TEXT("防御类玩具常用零件集合。")), { TEXT("Wheel"), TEXT("Gear"), TEXT("Battery") }, 55.0f }
 	};
 	}
+
+	EnsureBattleDiagramDefinitions(Diagrams);
 }
 
 void UTTDResearchSubsystem::LoadDefinitionsFromSettings(const UTTDDeveloperSettings& Settings)
@@ -431,12 +616,24 @@ void UTTDResearchSubsystem::LoadOrCreateProgress()
 	if (UGameplayStatics::DoesSaveGameExist(SaveSlotName, UserIndex))
 	{
 		ActiveSave = Cast<UTTDSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlotName, UserIndex));
+		if (ActiveSave && ActiveSave->SaveVersion < UTTDSaveGame::CurrentSaveVersion)
+		{
+			UE_LOG(LogTTDResearch, Warning, TEXT("Resetting research progress because save version %d is older than %d."), ActiveSave->SaveVersion, UTTDSaveGame::CurrentSaveVersion);
+			UGameplayStatics::DeleteGameInSlot(SaveSlotName, UserIndex);
+			ActiveSave = nullptr;
+		}
 	}
 
 	if (!ActiveSave)
 	{
 		ActiveSave = Cast<UTTDSaveGame>(UGameplayStatics::CreateSaveGameObject(UTTDSaveGame::StaticClass()));
+		ActiveSave->SaveVersion = UTTDSaveGame::CurrentSaveVersion;
 		ActiveSave->LastSavedUnixSeconds = FDateTime::UtcNow().ToUnixTimestamp();
+	}
+	else
+	{
+		ActiveSave->SaveVersion = UTTDSaveGame::CurrentSaveVersion;
+		NormalizePartInventory();
 	}
 
 	const int32 RemovedQueueItems = CraftingQueue.SetQueue(ActiveSave->CraftingQueue);
@@ -510,6 +707,8 @@ void UTTDResearchSubsystem::SaveProgress()
 		return;
 	}
 
+	NormalizePartInventory();
+	ActiveSave->SaveVersion = UTTDSaveGame::CurrentSaveVersion;
 	ActiveSave->CraftingQueue = CraftingQueue.GetQueue();
 	ActiveSave->LastSavedUnixSeconds = FDateTime::UtcNow().ToUnixTimestamp();
 	UGameplayStatics::SaveGameToSlot(ActiveSave, GetSaveSlotName(), UserIndex);
@@ -545,7 +744,7 @@ void UTTDResearchSubsystem::BroadcastToyBoxQueued(const FTTDCraftQueueItem& Queu
 	}
 }
 
-void UTTDResearchSubsystem::BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts) const
+void UTTDResearchSubsystem::BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts, const TArray<FTTDNameStack>& GrantedParts) const
 {
 	if (const UGameInstance* GameInstance = GetGameInstance())
 	{
@@ -554,6 +753,8 @@ void UTTDResearchSubsystem::BroadcastToyBoxClaimed(const FTTDCraftQueueItem& Que
 			FTTDToyBoxClaimedMessage Message;
 			Message.QueueItem = QueueItem;
 			Message.NewlyUnlockedParts = NewlyUnlockedParts;
+			Message.GrantedParts = GrantedParts;
+			Message.PartInventory = GetPartInventory();
 			MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Research_Queue_Claimed, Message);
 		}
 	}
@@ -579,12 +780,39 @@ void UTTDResearchSubsystem::BroadcastCollectionChanged() const
 	}
 }
 
+void UTTDResearchSubsystem::BroadcastInventoryChanged() const
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	if (const UGameInstance* GameInstance = GetGameInstance())
+	{
+		if (UGameplayMessageSubsystem* MessageSubsystem = GameInstance->GetSubsystem<UGameplayMessageSubsystem>())
+		{
+			FTTDResearchInventoryChangedMessage Message;
+			Message.PartInventory = GetPartInventory();
+			MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Research_Inventory_Changed, Message);
+		}
+	}
+}
+
 const FTTDToyBoxDefinition* UTTDResearchSubsystem::FindToyBox(const FName ToyBoxId) const
 {
 	return ToyBoxes.FindByPredicate(
 		[ToyBoxId](const FTTDToyBoxDefinition& ToyBox)
 		{
 			return ToyBox.ToyBoxId == ToyBoxId;
+		});
+}
+
+const FTTDDiagramDefinition* UTTDResearchSubsystem::FindDiagram(const FName DiagramId) const
+{
+	return Diagrams.FindByPredicate(
+		[DiagramId](const FTTDDiagramDefinition& Diagram)
+		{
+			return Diagram.DiagramId == DiagramId;
 		});
 }
 
@@ -608,4 +836,110 @@ FString UTTDResearchSubsystem::GetSaveSlotName() const
 bool UTTDResearchSubsystem::IsUnlocked(const TArray<FName>& UnlockedIds, const FName Id) const
 {
 	return UnlockedIds.Contains(Id);
+}
+
+TArray<FTTDNameStack> UTTDResearchSubsystem::GetDiagramPartCosts(const FTTDDiagramDefinition& Diagram) const
+{
+	TArray<FTTDNameStack> Result;
+	for (const FTTDNameStack& PartCost : Diagram.PartCosts)
+	{
+		if (!PartCost.Id.IsNone() && PartCost.Count > 0)
+		{
+			AddStackCount(Result, PartCost.Id, PartCost.Count);
+		}
+	}
+
+	if (Result.IsEmpty())
+	{
+		for (const FName PartId : Diagram.RequiredPartIds)
+		{
+			AddStackCount(Result, PartId, 1);
+		}
+	}
+
+	SortStacksById(Result);
+	return Result;
+}
+
+bool UTTDResearchSubsystem::HasPartCosts(const TArray<FTTDNameStack>& PartCosts, FText& OutFailureReason) const
+{
+	for (const FTTDNameStack& PartCost : PartCosts)
+	{
+		if (PartCost.Id.IsNone() || PartCost.Count <= 0)
+		{
+			continue;
+		}
+
+		const int32 AvailableCount = GetPartCount(PartCost.Id);
+		if (AvailableCount < PartCost.Count)
+		{
+			OutFailureReason = FText::Format(
+				FText::FromString(TEXT("零件不足：{0} 需要 {1}，当前 {2}")),
+				FText::FromName(PartCost.Id),
+				FText::AsNumber(PartCost.Count),
+				FText::AsNumber(AvailableCount));
+			return false;
+		}
+	}
+
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
+void UTTDResearchSubsystem::ApplyPartCosts(const TArray<FTTDNameStack>& PartCosts)
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	for (const FTTDNameStack& PartCost : PartCosts)
+	{
+		if (PartCost.Id.IsNone() || PartCost.Count <= 0)
+		{
+			continue;
+		}
+
+		for (FTTDNameStack& Stack : ActiveSave->PartInventory)
+		{
+			if (Stack.Id == PartCost.Id)
+			{
+				Stack.Count = FMath::Max(0, Stack.Count - PartCost.Count);
+				break;
+			}
+		}
+	}
+
+	NormalizePartInventory();
+}
+
+void UTTDResearchSubsystem::AddPartCount(const FName PartId, const int32 Count)
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	AddStackCount(ActiveSave->PartInventory, PartId, Count);
+	NormalizePartInventory();
+}
+
+void UTTDResearchSubsystem::NormalizePartInventory()
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	TArray<FTTDNameStack> NormalizedInventory;
+	for (const FTTDNameStack& Stack : ActiveSave->PartInventory)
+	{
+		if (!Stack.Id.IsNone() && Stack.Count > 0)
+		{
+			AddStackCount(NormalizedInventory, Stack.Id, Stack.Count);
+		}
+	}
+
+	SortStacksById(NormalizedInventory);
+	ActiveSave->PartInventory = MoveTemp(NormalizedInventory);
 }

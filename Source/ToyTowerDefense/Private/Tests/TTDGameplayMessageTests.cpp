@@ -42,6 +42,49 @@ bool FTTDGameplayMessageTests::RunTest(const FString& Parameters)
 	TestEqual(TEXT("payload queue items survive routing"), ReceivedMessage.QueueItems.Num(), 1);
 
 	Handle.Unregister();
+
+	int32 InventoryReceivedCount = 0;
+	FTTDResearchInventoryChangedMessage ReceivedInventoryMessage;
+	FGameplayMessageListenerHandle InventoryHandle = MessageSubsystem->RegisterListener<FTTDResearchInventoryChangedMessage>(
+		TAG_TTD_Message_Research_Inventory_Changed,
+		[&InventoryReceivedCount, &ReceivedInventoryMessage](FGameplayTag Channel, const FTTDResearchInventoryChangedMessage& Payload)
+		{
+			++InventoryReceivedCount;
+			ReceivedInventoryMessage = Payload;
+		});
+
+	FTTDResearchInventoryChangedMessage InventoryMessage;
+	InventoryMessage.PartInventory = { FTTDNameStack(TEXT("Gear"), 3) };
+
+	MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Research_Inventory_Changed, InventoryMessage);
+
+	TestEqual(TEXT("listener receives the research inventory payload"), InventoryReceivedCount, 1);
+	TestEqual(TEXT("payload inventory survives routing"), ReceivedInventoryMessage.PartInventory.Num(), 1);
+	TestEqual(TEXT("payload inventory count survives routing"), ReceivedInventoryMessage.PartInventory[0].Count, 3);
+
+	InventoryHandle.Unregister();
+
+	int32 CastleHealthReceivedCount = 0;
+	FTTDBattleCastleHealthChangedMessage ReceivedCastleHealthMessage;
+	FGameplayMessageListenerHandle CastleHealthHandle = MessageSubsystem->RegisterListener<FTTDBattleCastleHealthChangedMessage>(
+		TAG_TTD_Message_Battle_CastleHealth_Changed,
+		[&CastleHealthReceivedCount, &ReceivedCastleHealthMessage](FGameplayTag Channel, const FTTDBattleCastleHealthChangedMessage& Payload)
+		{
+			++CastleHealthReceivedCount;
+			ReceivedCastleHealthMessage = Payload;
+		});
+
+	FTTDBattleCastleHealthChangedMessage CastleHealthMessage;
+	CastleHealthMessage.CurrentHealth = 125.0f;
+	CastleHealthMessage.MaxHealth = 500.0f;
+
+	MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Battle_CastleHealth_Changed, CastleHealthMessage);
+
+	TestEqual(TEXT("listener receives the castle health payload"), CastleHealthReceivedCount, 1);
+	TestEqual(TEXT("payload current health survives routing"), ReceivedCastleHealthMessage.CurrentHealth, 125.0f);
+	TestEqual(TEXT("payload max health survives routing"), ReceivedCastleHealthMessage.MaxHealth, 500.0f);
+
+	CastleHealthHandle.Unregister();
 	GameInstance->Shutdown();
 	return true;
 }

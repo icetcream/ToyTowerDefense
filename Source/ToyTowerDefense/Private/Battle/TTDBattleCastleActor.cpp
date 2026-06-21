@@ -58,9 +58,10 @@ void ATTDBattleCastleActor::ApplyBattleDamage_Implementation(const float Damage,
 	}
 
 	CurrentHealth = FMath::Max(0.0f, CurrentHealth - Damage);
-	if (CurrentHealth <= 0.0f)
+	if (UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr)
 	{
-		if (UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr)
+		BattleSubsystem->HandleCastleDamaged(this);
+		if (CurrentHealth <= 0.0f)
 		{
 			BattleSubsystem->HandleCastleDestroyed(this);
 		}

@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 
+#include "Battle/TTDBattleBackgroundActor.h"
 #include "Battle/TTDBattleBuildingActor.h"
 #include "Battle/TTDBattleCastleActor.h"
 #include "Battle/TTDBattleEnemyActor.h"
@@ -43,14 +44,21 @@ namespace
 		Level.CastleTransform = FTransform::Identity;
 		Level.CastleMaxHealth = 500.0f;
 		Level.WaveIds = { TEXT("WaveA") };
-		Level.StartingDiagramIds = { TEXT("BasicTower") };
-		Level.StartingParts = { FTTDNameStack(TEXT("Gear"), 5), FTTDNameStack(TEXT("Spring"), 1) };
-		Level.StartingToyBoxes = { FTTDNameStack(TEXT("BasicBox"), 1) };
+		Level.StartingDiagramIds = { TEXT("BasicTower"), TEXT("ProjectileTower") };
+		Level.StartingParts = { FTTDNameStack(TEXT("Gear"), 5), FTTDNameStack(TEXT("Spring"), 3) };
+		Level.StartingToyBoxes = { FTTDNameStack(TEXT("BasicToyBox"), 1) };
 		Level.StartingCurrency = 10;
+		Level.MaxSelectedDiagrams = 2;
+		Level.MaxSelectedToyBoxes = 2;
+		Level.PreparationDurationSeconds = 0.2f;
+		Level.VictoryReturnDelaySeconds = 0.5f;
+		Level.Background.ArenaHalfExtent = FVector2D(1200.0f, 900.0f);
 		LevelTable->AddRow(TEXT("TestLevel"), Level);
 
 		FTTDWaveDefinition Wave;
 		Wave.WaveId = TEXT("WaveA");
+		Wave.DelayBeforeWave = 0.1f;
+		Wave.WaveDurationSeconds = 0.5f;
 		FTTDWaveEnemyEntry EnemyEntry;
 		EnemyEntry.EnemyId = TEXT("BasicEnemy");
 		EnemyEntry.Count = 2;
@@ -61,6 +69,7 @@ namespace
 
 		FTTDEnemyDefinition Enemy;
 		Enemy.EnemyId = TEXT("BasicEnemy");
+		Enemy.DisplayName = FText::FromString(TEXT("基础敌人"));
 		Enemy.EnemyClass = ATTDBattleEnemyActor::StaticClass();
 		Enemy.MaxHealth = 10.0f;
 		Enemy.MoveSpeed = 0.0f;
@@ -71,6 +80,7 @@ namespace
 
 		FTTDBuildingDefinition BasicTower;
 		BasicTower.BuildingId = TEXT("BasicTower");
+		BasicTower.DisplayName = FText::FromString(TEXT("基础塔"));
 		BasicTower.RequiredDiagramId = TEXT("BasicTower");
 		BasicTower.BuildingClass = ATTDBattleBuildingActor::StaticClass();
 		BasicTower.PartCosts = { FTTDNameStack(TEXT("Gear"), 2) };
@@ -83,17 +93,21 @@ namespace
 
 		FTTDBuildingDefinition MissingDiagramTower = BasicTower;
 		MissingDiagramTower.BuildingId = TEXT("MissingDiagramTower");
+		MissingDiagramTower.DisplayName = FText::FromString(TEXT("缺图纸测试塔"));
 		MissingDiagramTower.RequiredDiagramId = TEXT("MissingDiagram");
 		BuildingTable->AddRow(TEXT("MissingDiagramTower"), MissingDiagramTower);
 
 		FTTDBuildingDefinition ExpensiveTower = BasicTower;
 		ExpensiveTower.BuildingId = TEXT("ExpensiveTower");
+		ExpensiveTower.DisplayName = FText::FromString(TEXT("高耗材测试塔"));
 		ExpensiveTower.PartCosts = { FTTDNameStack(TEXT("Gear"), 999) };
 		BuildingTable->AddRow(TEXT("ExpensiveTower"), ExpensiveTower);
 
 		FTTDBuildingDefinition ProjectileTower = BasicTower;
 		ProjectileTower.BuildingId = TEXT("ProjectileTower");
-		ProjectileTower.PartCosts = { FTTDNameStack(TEXT("Gear"), 1) };
+		ProjectileTower.DisplayName = FText::FromString(TEXT("弹射塔"));
+		ProjectileTower.RequiredDiagramId = TEXT("ProjectileTower");
+		ProjectileTower.PartCosts = { FTTDNameStack(TEXT("Gear"), 1), FTTDNameStack(TEXT("Spring"), 1) };
 		ProjectileTower.AttackMode = ETTDBuildingAttackMode::Projectile;
 		ProjectileTower.BaseStats.AttackDamage = 10.0f;
 		ProjectileTower.BaseStats.AttackRange = 1000.0f;
@@ -103,7 +117,8 @@ namespace
 		BuildingTable->AddRow(TEXT("ProjectileTower"), ProjectileTower);
 
 		FTTDToyBoxRewardDefinition ToyBox;
-		ToyBox.ToyBoxId = TEXT("BasicBox");
+		ToyBox.ToyBoxId = TEXT("BasicToyBox");
+		ToyBox.DisplayName = FText::FromString(TEXT("基础玩具盒"));
 		ToyBox.PurchaseCost = 5;
 		ToyBox.RollCount = 2;
 		FTTDToyBoxRewardEntry Reward;
@@ -112,14 +127,15 @@ namespace
 		Reward.MinQuantity = 1;
 		Reward.MaxQuantity = 1;
 		ToyBox.RewardEntries = { Reward };
-		ToyBoxRewardTable->AddRow(TEXT("BasicBox"), ToyBox);
+		ToyBoxRewardTable->AddRow(TEXT("BasicToyBox"), ToyBox);
 
 		FTTDBattleHeightEffectDefinition HeightEffect;
 		HeightEffect.HeightEffectId = TEXT("HighGround");
 		HeightEffect.Modifiers = {
 			{ ETTDBattleAttribute::AttackDamage, ETTDAttributeModifierOp::Add, 5.0f },
 			{ ETTDBattleAttribute::AttackRange, ETTDAttributeModifierOp::Multiply, 2.0f },
-			{ ETTDBattleAttribute::AttackInterval, ETTDAttributeModifierOp::Override, 0.25f }
+			{ ETTDBattleAttribute::AttackInterval, ETTDAttributeModifierOp::Override, 0.25f },
+			{ ETTDBattleAttribute::MoveSpeed, ETTDAttributeModifierOp::Override, 12.0f }
 		};
 		HeightEffectTable->AddRow(TEXT("HighGround"), HeightEffect);
 	}
@@ -239,6 +255,15 @@ namespace
 		}
 		return Slot;
 	}
+
+	bool ContainsBuildingDefinition(const TArray<FTTDBuildingDefinition>& BuildingDefinitions, const FName BuildingId)
+	{
+		return BuildingDefinitions.ContainsByPredicate(
+			[BuildingId](const FTTDBuildingDefinition& BuildingDefinition)
+			{
+				return BuildingDefinition.BuildingId == BuildingId;
+			});
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -251,11 +276,13 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 	UTTDDeveloperSettings* Settings = GetMutableDefault<UTTDDeveloperSettings>();
 	const TMap<FGameplayTag, TSoftObjectPtr<UDataTable>> OriginalDataTables = Settings->GameplayTagDataTables;
 	const FName OriginalDefaultBattleLevelId = Settings->DefaultBattleLevelId;
+	const bool bOriginalShowBattleTestCheatButton = Settings->bShowBattleTestCheatButton;
 
-	auto RestoreSettings = [Settings, OriginalDataTables, OriginalDefaultBattleLevelId]()
+	auto RestoreSettings = [Settings, OriginalDataTables, OriginalDefaultBattleLevelId, bOriginalShowBattleTestCheatButton]()
 	{
 		Settings->GameplayTagDataTables = OriginalDataTables;
 		Settings->DefaultBattleLevelId = OriginalDefaultBattleLevelId;
+		Settings->bShowBattleTestCheatButton = bOriginalShowBattleTestCheatButton;
 	};
 
 	auto HasFailureText = [](const FText& FailureReason)
@@ -380,6 +407,37 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 		ResetSettingsForBattleTest(Settings);
 		FTTDBattleTestTables Tables;
 		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("InvalidBackgroundStartupValidation")))
+		{
+			Level->Background.BackgroundClass = AActor::StaticClass();
+		}
+		Tables.Configure(Settings);
+
+		UWorld* InvalidBackgroundWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("invalid background test world is created"), InvalidBackgroundWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(InvalidBackgroundWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = InvalidBackgroundWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("invalid background battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem)
+			{
+				FText FailureReason;
+				TestFalse(TEXT("battle start fails when background class is invalid"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				TestTrue(TEXT("invalid background failure provides a reason"), HasFailureText(FailureReason));
+				TestEqual(TEXT("invalid background failure leaves battle inactive"), BattleSubsystem->GetBattleState(), ETTDBattleState::Inactive);
+			}
+
+			DestroyBattleTestWorld(InvalidBackgroundWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
 		if (FTTDEnemyDefinition* Enemy = Tables.EnemyTable->FindRow<FTTDEnemyDefinition>(TEXT("BasicEnemy"), TEXT("NonPoolableEnemyStartupValidation")))
 		{
 			Enemy->EnemyClass = AActor::StaticClass();
@@ -438,7 +496,7 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 				TestTrue(TEXT("battle can start before runtime pool capacity is exhausted"), BattleSubsystem->StartDefaultBattle(FailureReason));
 				TestEqual(TEXT("runtime spawn failure starts with zero progress"), BattleSubsystem->GetProgress(), 0.0f);
 				AddExpectedError(TEXT("Battle entered configuration error"), EAutomationExpectedErrorFlags::Contains, 1);
-				BattleSubsystem->Tick(0.01f);
+				BattleSubsystem->Tick(0.3f);
 				TestEqual(TEXT("runtime enemy spawn failure enters configuration error"), BattleSubsystem->GetBattleState(), ETTDBattleState::ConfigurationError);
 				TestEqual(TEXT("runtime enemy spawn failure does not advance progress"), BattleSubsystem->GetProgress(), 0.0f);
 				TestTrue(TEXT("runtime enemy spawn failure does not trigger victory"), BattleSubsystem->GetBattleState() != ETTDBattleState::Victory);
@@ -481,7 +539,7 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 
 				ATTDBattleBuildingActor* ProjectileBuilding = Cast<ATTDBattleBuildingActor>(Slot->GetOccupyingBuilding());
 				TestNotNull(TEXT("projectile lifecycle tower exists"), ProjectileBuilding);
-				BattleSubsystem->Tick(0.01f);
+				BattleSubsystem->Tick(0.31f);
 				if (ProjectileBuilding)
 				{
 					ProjectileBuilding->Tick(0.02f);
@@ -505,6 +563,210 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 			}
 
 			DestroyBattleTestWorld(ProjectileLifecycleWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		Tables.Configure(Settings);
+
+		UWorld* LoadoutWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("explicit loadout test world is created"), LoadoutWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(LoadoutWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = LoadoutWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("explicit loadout battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem && Slot)
+			{
+				FTTDBattleLoadout EmptyLoadout;
+				FText FailureReason;
+				TestTrue(TEXT("battle starts with an explicit empty loadout"), BattleSubsystem->StartBattle(TEXT("TestLevel"), EmptyLoadout, FailureReason));
+				const TArray<FTTDBuildingDefinition> EmptyLoadoutBuildings = BattleSubsystem->GetAvailableBuildingDefinitions();
+				TestFalse(TEXT("empty loadout exposes no basic tower build option"), ContainsBuildingDefinition(EmptyLoadoutBuildings, TEXT("BasicTower")));
+				TestFalse(TEXT("empty loadout exposes no projectile tower build option"), ContainsBuildingDefinition(EmptyLoadoutBuildings, TEXT("ProjectileTower")));
+				TestFalse(TEXT("explicit empty loadout does not inherit level starting diagrams"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), Slot, FailureReason));
+
+				BattleSubsystem->EndBattle(ETTDBattleState::Defeat);
+				BattleSubsystem->ClearEndedBattle();
+
+				FTTDBattleLoadout SelectedLoadout;
+				SelectedLoadout.SelectedDiagramIds = { TEXT("BasicTower") };
+				SelectedLoadout.SelectedToyBoxes = { FTTDNameStack(TEXT("BasicToyBox"), 2) };
+				TestTrue(TEXT("battle starts with a selected preparation loadout"), BattleSubsystem->StartBattle(TEXT("TestLevel"), SelectedLoadout, FailureReason));
+				const TArray<FTTDBuildingDefinition> SelectedLoadoutBuildings = BattleSubsystem->GetAvailableBuildingDefinitions();
+				TestTrue(TEXT("selected basic tower diagram exposes basic tower build option"), ContainsBuildingDefinition(SelectedLoadoutBuildings, TEXT("BasicTower")));
+				TestFalse(TEXT("selected basic tower diagram hides projectile tower build option"), ContainsBuildingDefinition(SelectedLoadoutBuildings, TEXT("ProjectileTower")));
+				TestFalse(TEXT("selected basic tower diagram does not enable projectile tower"), BattleSubsystem->TryBuildOnSlot(TEXT("ProjectileTower"), Slot, FailureReason));
+				TestTrue(TEXT("selected diagram enables its building"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), Slot, FailureReason));
+
+				TArray<FTTDNameStack> Rewards;
+				TestTrue(TEXT("first selected toy box is available in battle inventory"), BattleSubsystem->OpenToyBox(TEXT("BasicToyBox"), Rewards, FailureReason));
+				TestTrue(TEXT("second selected toy box of same type is available in battle inventory"), BattleSubsystem->OpenToyBox(TEXT("BasicToyBox"), Rewards, FailureReason));
+				TestFalse(TEXT("selected toy box stack is consumed after repeated opens"), BattleSubsystem->OpenToyBox(TEXT("BasicToyBox"), Rewards, FailureReason));
+			}
+
+			DestroyBattleTestWorld(LoadoutWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("LegacyToyBoxId")))
+		{
+			Level->StartingToyBoxes = { FTTDNameStack(TEXT("BasicBox"), 1) };
+		}
+		if (FTTDToyBoxRewardDefinition* ToyBox = Tables.ToyBoxRewardTable->FindRow<FTTDToyBoxRewardDefinition>(TEXT("BasicToyBox"), TEXT("LegacyToyBoxId")))
+		{
+			FTTDToyBoxRewardDefinition LegacyToyBox = *ToyBox;
+			Tables.ToyBoxRewardTable->RemoveRow(TEXT("BasicToyBox"));
+			LegacyToyBox.ToyBoxId = TEXT("BasicBox");
+			Tables.ToyBoxRewardTable->AddRow(TEXT("BasicBox"), LegacyToyBox);
+		}
+		Tables.Configure(Settings);
+
+		UWorld* LegacyToyBoxWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("legacy toy box id test world is created"), LegacyToyBoxWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(LegacyToyBoxWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = LegacyToyBoxWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("legacy toy box id battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem)
+			{
+				TestNotNull(TEXT("legacy BasicBox reward definition is exposed as BasicToyBox"), BattleSubsystem->FindToyBoxDefinition(TEXT("BasicToyBox")));
+				FText FailureReason;
+				TestTrue(TEXT("legacy BasicBox starting stack is normalized for battle"), BattleSubsystem->StartDefaultBattle(FailureReason));
+
+				TArray<FTTDNameStack> Rewards;
+				TestTrue(TEXT("normalized BasicToyBox can open legacy BasicBox rewards"), BattleSubsystem->OpenToyBox(TEXT("BasicToyBox"), Rewards, FailureReason));
+			}
+
+			DestroyBattleTestWorld(LegacyToyBoxWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		Tables.Configure(Settings);
+
+		UWorld* CheatWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("cheat supplies test world is created"), CheatWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(CheatWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = CheatWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("cheat supplies battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem && Slot)
+			{
+				FTTDBattleLoadout EmptyLoadout;
+				FText FailureReason;
+				TestTrue(TEXT("cheat supplies battle starts with empty loadout"), BattleSubsystem->StartBattle(TEXT("TestLevel"), EmptyLoadout, FailureReason));
+				TestFalse(TEXT("projectile tower is initially blocked without cheat resources"), BattleSubsystem->TryBuildOnSlot(TEXT("ProjectileTower"), Slot, FailureReason));
+
+				FText CheatSummary;
+				TestTrue(TEXT("cheat supplies can be applied while battle is running"), BattleSubsystem->ApplyTestCheatSupplies(CheatSummary));
+				TestTrue(TEXT("cheat supplies grant high test currency"), BattleSubsystem->GetCurrency() >= 999);
+				TestTrue(
+					TEXT("cheat supplies expose projectile tower build option after granting diagrams"),
+					ContainsBuildingDefinition(BattleSubsystem->GetAvailableBuildingDefinitions(), TEXT("ProjectileTower")));
+				TestTrue(TEXT("cheat supplies unlock missing diagram and parts"), BattleSubsystem->TryBuildOnSlot(TEXT("ProjectileTower"), Slot, FailureReason));
+
+				TArray<FTTDNameStack> Rewards;
+				TestTrue(TEXT("cheat supplies grant configured toy boxes"), BattleSubsystem->OpenToyBox(TEXT("BasicToyBox"), Rewards, FailureReason));
+			}
+
+			DestroyBattleTestWorld(CheatWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDEnemyDefinition* Enemy = Tables.EnemyTable->FindRow<FTTDEnemyDefinition>(TEXT("BasicEnemy"), TEXT("NoCurrencyDropChance")))
+		{
+			Enemy->CurrencyDrop = 7;
+			Enemy->CurrencyDropChance = 0.0f;
+		}
+		Tables.Configure(Settings);
+
+		UWorld* NoDropWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("no currency drop chance test world is created"), NoDropWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(NoDropWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = NoDropWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("no currency drop chance battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem)
+			{
+				FText FailureReason;
+				TestTrue(TEXT("no drop chance battle starts"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				BattleSubsystem->Tick(0.3f);
+				ATTDBattleEnemyActor* Enemy = BattleSubsystem->FindNearestEnemy(FVector::ZeroVector, 10000.0f);
+				TestNotNull(TEXT("no drop chance enemy spawns"), Enemy);
+				const int32 CurrencyBeforeKill = BattleSubsystem->GetCurrency();
+				if (Enemy)
+				{
+					Enemy->ApplyDamage(999.0f, BattleSubsystem);
+				}
+				TestEqual(TEXT("zero currency drop chance grants no currency"), BattleSubsystem->GetCurrency(), CurrencyBeforeKill);
+			}
+
+			DestroyBattleTestWorld(NoDropWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDEnemyDefinition* Enemy = Tables.EnemyTable->FindRow<FTTDEnemyDefinition>(TEXT("BasicEnemy"), TEXT("GuaranteedCurrencyDropChance")))
+		{
+			Enemy->CurrencyDrop = 7;
+			Enemy->CurrencyDropChance = 1.0f;
+		}
+		Tables.Configure(Settings);
+
+		UWorld* GuaranteedDropWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("guaranteed currency drop chance test world is created"), GuaranteedDropWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(GuaranteedDropWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = GuaranteedDropWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("guaranteed currency drop chance battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem)
+			{
+				FText FailureReason;
+				TestTrue(TEXT("guaranteed drop chance battle starts"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				BattleSubsystem->Tick(0.3f);
+				ATTDBattleEnemyActor* Enemy = BattleSubsystem->FindNearestEnemy(FVector::ZeroVector, 10000.0f);
+				TestNotNull(TEXT("guaranteed drop chance enemy spawns"), Enemy);
+				const int32 CurrencyBeforeKill = BattleSubsystem->GetCurrency();
+				if (Enemy)
+				{
+					Enemy->ApplyDamage(999.0f, BattleSubsystem);
+				}
+				TestEqual(TEXT("one currency drop chance grants configured currency"), BattleSubsystem->GetCurrency(), CurrencyBeforeKill + 7);
+			}
+
+			DestroyBattleTestWorld(GuaranteedDropWorld);
 		}
 	}
 
@@ -543,6 +805,21 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 	}
 
 	TestTrue(TEXT("battle starts from configured default level"), BattleSubsystem->StartDefaultBattle());
+	ATTDBattleBackgroundActor* BackgroundActor = nullptr;
+	for (TActorIterator<ATTDBattleBackgroundActor> It(World); It; ++It)
+	{
+		BackgroundActor = *It;
+		break;
+	}
+	TestNotNull(TEXT("battle start spawns a background actor"), BackgroundActor);
+	if (BackgroundActor)
+	{
+		TestEqual(TEXT("battle background uses configured X half extent"), BackgroundActor->GetBackgroundDefinition().ArenaHalfExtent.X, 1200.0);
+		TestEqual(TEXT("battle background uses configured Y half extent"), BackgroundActor->GetBackgroundDefinition().ArenaHalfExtent.Y, 900.0);
+	}
+	TestEqual(TEXT("battle starts in preparation phase"), BattleSubsystem->GetBattlePhase(), ETTDBattlePhase::Preparing);
+	TestEqual(TEXT("current wave is first wave during preparation"), BattleSubsystem->GetCurrentWaveNumber(), 1);
+	TestEqual(TEXT("total wave count is exposed"), BattleSubsystem->GetTotalWaveCount(), 1);
 	TestEqual(TEXT("total level weight is built from wave enemy weights"), BattleSubsystem->GetTotalEnemyWeight(), 4.0f);
 	TestEqual(TEXT("initial remaining weight includes unspawned enemies"), BattleSubsystem->GetRemainingEnemyWeight(), 4.0f);
 	TestEqual(TEXT("initial progress is zero"), BattleSubsystem->GetProgress(), 0.0f);
@@ -561,6 +838,7 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 		TestEqual(TEXT("height add modifier affects attack damage"), Stats.AttackDamage, 10.0f);
 		TestEqual(TEXT("height multiply modifier affects range"), Stats.AttackRange, 2000.0f);
 		TestEqual(TEXT("height override modifier affects interval"), Stats.AttackInterval, 0.25f);
+		TestEqual(TEXT("height override modifier affects move speed placeholder"), Stats.MoveSpeed, 12.0f);
 	}
 
 	TestTrue(TEXT("building without height effect keeps base stats"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), PlainSlot, FailureReason));
@@ -572,6 +850,7 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 		TestEqual(TEXT("base attack damage is unchanged without height effect"), Stats.AttackDamage, 5.0f);
 		TestEqual(TEXT("base attack range is unchanged without height effect"), Stats.AttackRange, 1000.0f);
 		TestEqual(TEXT("base attack interval is unchanged without height effect"), Stats.AttackInterval, 0.5f);
+		TestEqual(TEXT("base move speed defaults to stationary building"), Stats.MoveSpeed, 0.0f);
 	}
 
 	UObject* NearestTarget = BattleSubsystem->FindNearestBattleTarget(PlainSlot->GetActorLocation() + FVector(1.0f, 0.0f, 0.0f));
@@ -583,10 +862,10 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 	}
 	TestTrue(TEXT("nearest target selection prefers closest building over castle"), NearestTarget == PlainBuilding);
 
-	TestTrue(TEXT("toy box can be purchased with currency"), BattleSubsystem->BuyToyBox(TEXT("BasicBox"), FailureReason));
+	TestTrue(TEXT("toy box can be purchased with currency"), BattleSubsystem->BuyToyBox(TEXT("BasicToyBox"), FailureReason));
 	BattleSubsystem->SetRewardRandomSeed(42);
 	TArray<FTTDNameStack> Rewards;
-	TestTrue(TEXT("toy box opens through weighted reward table"), BattleSubsystem->OpenToyBox(TEXT("BasicBox"), Rewards, FailureReason));
+	TestTrue(TEXT("toy box opens through weighted reward table"), BattleSubsystem->OpenToyBox(TEXT("BasicToyBox"), Rewards, FailureReason));
 	TestEqual(TEXT("toy box deterministic reward stack count"), Rewards.Num(), 1);
 	if (Rewards.Num() == 1)
 	{
@@ -594,7 +873,12 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 		TestEqual(TEXT("toy box rewards configured quantity"), Rewards[0].Count, 2);
 	}
 
-	BattleSubsystem->Tick(0.01f);
+	BattleSubsystem->Tick(0.1f);
+	TestNull(TEXT("enemy does not spawn during preparation"), BattleSubsystem->FindNearestEnemy(FVector::ZeroVector, 10000.0f));
+	BattleSubsystem->Tick(0.1f);
+	TestEqual(TEXT("battle enters first buffer before wave"), BattleSubsystem->GetBattlePhase(), ETTDBattlePhase::Buffer);
+	BattleSubsystem->Tick(0.1f);
+	TestEqual(TEXT("battle enters wave active after preparation and buffer"), BattleSubsystem->GetBattlePhase(), ETTDBattlePhase::WaveActive);
 	ATTDBattleEnemyActor* FirstEnemy = BattleSubsystem->FindNearestEnemy(FVector::ZeroVector, 10000.0f);
 	TestNotNull(TEXT("first enemy spawns from wave schedule"), FirstEnemy);
 	if (HighBuilding)
@@ -635,9 +919,25 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 		}
 	}
 
-	TestEqual(TEXT("projectile hit kills final enemy"), BattleSubsystem->GetBattleState(), ETTDBattleState::Victory);
+	TestEqual(TEXT("final enemy death before wave timer expires keeps battle running"), BattleSubsystem->GetBattleState(), ETTDBattleState::Running);
+	BattleSubsystem->Tick(0.3f);
+	TestEqual(TEXT("projectile hit kills final enemy after wave timer expires"), BattleSubsystem->GetBattleState(), ETTDBattleState::Victory);
 	TestEqual(TEXT("victory progress is complete"), BattleSubsystem->GetProgress(), 1.0f);
 	TestEqual(TEXT("projectile is unregistered after battle ends"), BattleSubsystem->GetActiveProjectileCount(), 0);
+	TestFalse(TEXT("victory return is not immediate"), BattleSubsystem->IsPostBattleReturnReady());
+	BattleSubsystem->Tick(0.5f);
+	TestTrue(TEXT("victory return becomes ready after configured delay"), BattleSubsystem->IsPostBattleReturnReady());
+	BattleSubsystem->ClearEndedBattle();
+
+	int32 BackgroundCountAfterCleanup = 0;
+	for (TActorIterator<ATTDBattleBackgroundActor> It(World); It; ++It)
+	{
+		if (IsValid(*It) && !It->IsActorBeingDestroyed())
+		{
+			++BackgroundCountAfterCleanup;
+		}
+	}
+	TestEqual(TEXT("clearing ended battle removes the spawned background"), BackgroundCountAfterCleanup, 0);
 
 	DestroyBattleTestWorld(World);
 	RestoreSettings();

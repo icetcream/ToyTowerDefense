@@ -1,5 +1,6 @@
 #include "TTDBattleWorldSubsystem.h"
 
+#include "Battle/TTDBattleBackgroundActor.h"
 #include "Battle/TTDBattleBuildingActor.h"
 #include "Battle/TTDBattleCastleActor.h"
 #include "Battle/TTDBattleEnemyActor.h"
@@ -22,9 +23,17 @@ DEFINE_LOG_CATEGORY_STATIC(LogTTDBattle, Log, All);
 
 namespace
 {
+	const FName LegacyBasicToyBoxId(TEXT("BasicBox"));
+	const FName BasicToyBoxId(TEXT("BasicToyBox"));
+
 	FText BattleText(const TCHAR* Value)
 	{
 		return FText::FromString(Value);
+	}
+
+	FName NormalizeToyBoxId(const FName ToyBoxId)
+	{
+		return ToyBoxId == LegacyBasicToyBoxId ? BasicToyBoxId : ToyBoxId;
 	}
 
 	template<typename RowType>
@@ -127,14 +136,29 @@ void UTTDBattleWorldSubsystem::Deinitialize()
 
 void UTTDBattleWorldSubsystem::Tick(const float DeltaTime)
 {
-	if (BattleState != ETTDBattleState::Running || DeltaTime <= 0.0f)
+	if (DeltaTime <= 0.0f)
 	{
 		return;
 	}
 
-	BattleElapsedSeconds += DeltaTime;
-	SpawnDueEnemies();
-	CheckVictoryCondition();
+	if (BattleState == ETTDBattleState::Running)
+	{
+		BattleElapsedSeconds += DeltaTime;
+		UpdateBattlePhase();
+		SpawnDueEnemies();
+		CheckVictoryCondition();
+		return;
+	}
+
+	if (BattleState == ETTDBattleState::Victory && BattlePhase == ETTDBattlePhase::VictoryDelay && !bPostBattleReturnReady)
+	{
+		BattleElapsedSeconds += DeltaTime;
+		bPostBattleReturnReady = BattleElapsedSeconds >= VictoryReturnReadySeconds;
+		if (bPostBattleReturnReady)
+		{
+			BroadcastPhaseChanged();
+		}
+	}
 }
 
 TStatId UTTDBattleWorldSubsystem::GetStatId() const
@@ -182,13 +206,28 @@ bool UTTDBattleWorldSubsystem::StartBattleWithReason(const FName LevelId, FText&
 
 bool UTTDBattleWorldSubsystem::StartBattle(const FName LevelId, FText& OutFailureReason)
 {
+	return StartBattleInternal(LevelId, nullptr, OutFailureReason);
+}
+
+bool UTTDBattleWorldSubsystem::StartBattleWithLoadout(const FName LevelId, FTTDBattleLoadout Loadout, FText& OutFailureReason)
+{
+	return StartBattle(LevelId, Loadout, OutFailureReason);
+}
+
+bool UTTDBattleWorldSubsystem::StartBattle(const FName LevelId, const FTTDBattleLoadout& Loadout, FText& OutFailureReason)
+{
+	return StartBattleInternal(LevelId, &Loadout, OutFailureReason);
+}
+
+bool UTTDBattleWorldSubsystem::StartBattleInternal(const FName LevelId, const FTTDBattleLoadout* Loadout, FText& OutFailureReason)
+{
 	LoadDefinitionsFromSettings();
 	GatherPlacedActors();
 
 	const FTTDBattleLevelDefinition* LevelDefinition = LevelDefinitions.Find(LevelId);
 	if (!LevelDefinition)
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Battle level {0} is not configured.")), FText::FromName(LevelId));
+		OutFailureReason = FText::Format(BattleText(TEXT("战斗关卡 {0} 未配置。")), FText::FromName(LevelId));
 		UE_LOG(LogTTDBattle, Warning, TEXT("StartBattle failed: %s"), *OutFailureReason.ToString());
 		return false;
 	}
@@ -205,16 +244,22 @@ bool UTTDBattleWorldSubsystem::StartBattle(const FName LevelId, FText& OutFailur
 	++BattleInstanceId;
 	ActiveLevelId = LevelId;
 	BattleState = ETTDBattleState::Running;
+	BattlePhase = ETTDBattlePhase::None;
 	BattleElapsedSeconds = 0.0f;
 	Currency = FMath::Max(0, LevelDefinition->StartingCurrency);
 	TotalEnemyWeight = 0.0f;
 	RemainingUnspawnedWeight = 0.0f;
 	AliveEnemyWeight = 0.0f;
 	FrozenProgress = 0.0f;
+	VictoryReturnDelaySeconds = FMath::Max(0.0f, LevelDefinition->VictoryReturnDelaySeconds);
+	VictoryReturnReadySeconds = 0.0f;
+	CurrentWaveIndex = INDEX_NONE;
 	bUseFrozenProgress = false;
+	bPostBattleReturnReady = false;
 	bBroadcastedInitialState = false;
 
-	for (const FName DiagramId : LevelDefinition->StartingDiagramIds)
+	const TArray<FName>& SourceDiagramIds = Loadout ? Loadout->SelectedDiagramIds : LevelDefinition->StartingDiagramIds;
+	for (const FName DiagramId : SourceDiagramIds)
 	{
 		if (!DiagramId.IsNone())
 		{
@@ -227,22 +272,32 @@ bool UTTDBattleWorldSubsystem::StartBattle(const FName LevelId, FText& OutFailur
 		AddPartCount(PartStack.Id, PartStack.Count);
 	}
 
-	for (const FTTDNameStack& ToyBoxStack : LevelDefinition->StartingToyBoxes)
+	const TArray<FTTDNameStack>& SourceToyBoxes = Loadout ? Loadout->SelectedToyBoxes : LevelDefinition->StartingToyBoxes;
+	for (const FTTDNameStack& ToyBoxStack : SourceToyBoxes)
 	{
 		AddToyBoxCount(ToyBoxStack.Id, ToyBoxStack.Count);
+	}
+
+	if (!SpawnBackgroundForLevel(*LevelDefinition))
+	{
+		CleanupBattle();
+		OutFailureReason = BattleText(TEXT("战斗背景生成失败。"));
+		return false;
 	}
 
 	if (!SpawnCastleForLevel(*LevelDefinition))
 	{
 		CleanupBattle();
-		OutFailureReason = BattleText(TEXT("Castle actor could not be spawned."));
+		OutFailureReason = BattleText(TEXT("城堡生成失败。"));
 		return false;
 	}
 
 	BuildSpawnQueueForLevel(*LevelDefinition);
 	BroadcastStateChanged();
+	UpdateBattlePhase();
 	BroadcastCurrencyChanged();
 	BroadcastInventoryChanged();
+	BroadcastCastleHealthChanged();
 	BroadcastProgressChanged();
 	bBroadcastedInitialState = true;
 	OutFailureReason = FText::GetEmpty();
@@ -257,6 +312,25 @@ void UTTDBattleWorldSubsystem::EndBattle(const ETTDBattleState FinalState)
 	}
 
 	BattleState = FinalState;
+	switch (FinalState)
+	{
+	case ETTDBattleState::Victory:
+		VictoryReturnReadySeconds = BattleElapsedSeconds + VictoryReturnDelaySeconds;
+		SetBattlePhase(ETTDBattlePhase::VictoryDelay, CurrentWaveIndex);
+		break;
+	case ETTDBattleState::Defeat:
+		SetBattlePhase(ETTDBattlePhase::Defeat, CurrentWaveIndex);
+		break;
+	case ETTDBattleState::ConfigurationError:
+		SetBattlePhase(ETTDBattlePhase::ConfigurationError, CurrentWaveIndex);
+		break;
+	case ETTDBattleState::Inactive:
+		SetBattlePhase(ETTDBattlePhase::None, INDEX_NONE);
+		break;
+	case ETTDBattleState::Running:
+	default:
+		break;
+	}
 
 	ReleaseActiveProjectiles();
 	ReleaseActiveEnemies();
@@ -270,43 +344,53 @@ void UTTDBattleWorldSubsystem::EndBattle(const ETTDBattleState FinalState)
 	BroadcastBattleEnded(FinalState);
 }
 
+void UTTDBattleWorldSubsystem::ClearEndedBattle()
+{
+	if (BattleState == ETTDBattleState::Running)
+	{
+		return;
+	}
+
+	CleanupBattle();
+}
+
 bool UTTDBattleWorldSubsystem::TryBuildOnSlot(const FName BuildingId, ATTDBuildSlotActor* Slot, FText& OutFailureReason)
 {
 	OutFailureReason = FText::GetEmpty();
 	if (BattleState != ETTDBattleState::Running)
 	{
-		OutFailureReason = BattleText(TEXT("Battle is not running."));
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
 		return false;
 	}
 
 	if (!Slot)
 	{
-		OutFailureReason = BattleText(TEXT("Build slot is invalid."));
+		OutFailureReason = BattleText(TEXT("建造位置无效。"));
 		return false;
 	}
 
 	if (Slot->IsOccupied())
 	{
-		OutFailureReason = BattleText(TEXT("Build slot is already occupied."));
+		OutFailureReason = BattleText(TEXT("建造位置已被占用。"));
 		return false;
 	}
 
 	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(BuildingId);
 	if (!BuildingDefinition)
 	{
-		OutFailureReason = BattleText(TEXT("Building is not configured."));
+		OutFailureReason = BattleText(TEXT("建筑未配置。"));
 		return false;
 	}
 
 	if (!BuildingDefinition->RequiredDiagramId.IsNone() && !DiagramIds.Contains(BuildingDefinition->RequiredDiagramId))
 	{
-		OutFailureReason = BattleText(TEXT("Required diagram is not available."));
+		OutFailureReason = BattleText(TEXT("缺少所需图纸。"));
 		return false;
 	}
 
 	if (!HasPartCosts(BuildingDefinition->PartCosts))
 	{
-		OutFailureReason = BattleText(TEXT("Not enough parts."));
+		OutFailureReason = BattleText(TEXT("零件不足。"));
 		return false;
 	}
 
@@ -326,7 +410,7 @@ bool UTTDBattleWorldSubsystem::TryBuildOnSlot(const FName BuildingId, ATTDBuildS
 	ATTDBattleBuildingActor* Building = Cast<ATTDBattleBuildingActor>(Actor);
 	if (!Building)
 	{
-		OutFailureReason = BattleText(TEXT("Building actor could not be spawned."));
+		OutFailureReason = BattleText(TEXT("建筑生成失败。"));
 		return false;
 	}
 
@@ -345,21 +429,22 @@ bool UTTDBattleWorldSubsystem::TryBuildOnSlot(const FName BuildingId, ATTDBuildS
 bool UTTDBattleWorldSubsystem::BuyToyBox(const FName ToyBoxId, FText& OutFailureReason)
 {
 	OutFailureReason = FText::GetEmpty();
-	const FTTDToyBoxRewardDefinition* ToyBoxDefinition = ToyBoxRewardDefinitions.Find(ToyBoxId);
+	const FName NormalizedToyBoxId = NormalizeToyBoxId(ToyBoxId);
+	const FTTDToyBoxRewardDefinition* ToyBoxDefinition = ToyBoxRewardDefinitions.Find(NormalizedToyBoxId);
 	if (!ToyBoxDefinition)
 	{
-		OutFailureReason = BattleText(TEXT("Toy box is not configured."));
+		OutFailureReason = BattleText(TEXT("玩具盒未配置。"));
 		return false;
 	}
 
 	if (Currency < ToyBoxDefinition->PurchaseCost)
 	{
-		OutFailureReason = BattleText(TEXT("Not enough currency."));
+		OutFailureReason = BattleText(TEXT("货币不足。"));
 		return false;
 	}
 
 	Currency -= ToyBoxDefinition->PurchaseCost;
-	AddToyBoxCount(ToyBoxId, 1);
+	AddToyBoxCount(NormalizedToyBoxId, 1);
 	BroadcastCurrencyChanged();
 	BroadcastInventoryChanged();
 	return true;
@@ -370,17 +455,18 @@ bool UTTDBattleWorldSubsystem::OpenToyBox(FName ToyBoxId, TArray<FTTDNameStack>&
 	OutRewards.Reset();
 	OutFailureReason = FText::GetEmpty();
 
-	const FTTDToyBoxRewardDefinition* ToyBoxDefinition = ToyBoxRewardDefinitions.Find(ToyBoxId);
+	const FName NormalizedToyBoxId = NormalizeToyBoxId(ToyBoxId);
+	const FTTDToyBoxRewardDefinition* ToyBoxDefinition = ToyBoxRewardDefinitions.Find(NormalizedToyBoxId);
 	if (!ToyBoxDefinition)
 	{
-		OutFailureReason = BattleText(TEXT("Toy box is not configured."));
+		OutFailureReason = BattleText(TEXT("玩具盒未配置。"));
 		return false;
 	}
 
-	int32* ToyBoxCount = ToyBoxCounts.Find(ToyBoxId);
+	int32* ToyBoxCount = ToyBoxCounts.Find(NormalizedToyBoxId);
 	if (!ToyBoxCount || *ToyBoxCount <= 0)
 	{
-		OutFailureReason = BattleText(TEXT("Toy box is not available."));
+		OutFailureReason = BattleText(TEXT("没有可打开的玩具盒。"));
 		return false;
 	}
 
@@ -392,14 +478,14 @@ bool UTTDBattleWorldSubsystem::OpenToyBox(FName ToyBoxId, TArray<FTTDNameStack>&
 
 	if (TotalWeight <= 0.0f)
 	{
-		OutFailureReason = BattleText(TEXT("Toy box has no valid rewards."));
+		OutFailureReason = BattleText(TEXT("玩具盒没有有效奖励。"));
 		return false;
 	}
 
 	--(*ToyBoxCount);
 	if (*ToyBoxCount <= 0)
 	{
-		ToyBoxCounts.Remove(ToyBoxId);
+		ToyBoxCounts.Remove(NormalizedToyBoxId);
 	}
 
 	TMap<FName, int32> RewardCounts;
@@ -438,6 +524,61 @@ bool UTTDBattleWorldSubsystem::OpenToyBox(FName ToyBoxId, TArray<FTTDNameStack>&
 	return true;
 }
 
+bool UTTDBattleWorldSubsystem::ApplyTestCheatSupplies(FText& OutSummary)
+{
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutSummary = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	int32 AddedDiagramCount = 0;
+	int32 AddedPartStackCount = 0;
+	int32 AddedToyBoxStackCount = 0;
+
+	for (const TPair<FName, FTTDBuildingDefinition>& Pair : BuildingDefinitions)
+	{
+		const FTTDBuildingDefinition& BuildingDefinition = Pair.Value;
+		if (!BuildingDefinition.RequiredDiagramId.IsNone() && !DiagramIds.Contains(BuildingDefinition.RequiredDiagramId))
+		{
+			DiagramIds.Add(BuildingDefinition.RequiredDiagramId);
+			++AddedDiagramCount;
+		}
+
+		for (const FTTDNameStack& PartCost : BuildingDefinition.PartCosts)
+		{
+			if (PartCost.Id.IsNone())
+			{
+				continue;
+			}
+
+			const int32 Quantity = FMath::Max(10, FMath::Max(0, PartCost.Count) * 10);
+			AddPartCount(PartCost.Id, Quantity);
+			++AddedPartStackCount;
+		}
+	}
+
+	for (const TPair<FName, FTTDToyBoxRewardDefinition>& Pair : ToyBoxRewardDefinitions)
+	{
+		if (!Pair.Key.IsNone())
+		{
+			AddToyBoxCount(Pair.Key, 3);
+			++AddedToyBoxStackCount;
+		}
+	}
+
+	Currency = FMath::Max(Currency, 999);
+	BroadcastCurrencyChanged();
+	BroadcastInventoryChanged();
+
+	OutSummary = FText::Format(
+		BattleText(TEXT("测试补给已发放：货币 999、图纸 +{0}、零件项 +{1}、玩具盒项 +{2}。")),
+		FText::AsNumber(AddedDiagramCount),
+		FText::AsNumber(AddedPartStackCount),
+		FText::AsNumber(AddedToyBoxStackCount));
+	return true;
+}
+
 float UTTDBattleWorldSubsystem::GetProgress() const
 {
 	if (bUseFrozenProgress)
@@ -470,10 +611,49 @@ TArray<FTTDBuildingDefinition> UTTDBattleWorldSubsystem::GetBuildingDefinitions(
 	return Result;
 }
 
+TArray<FTTDBuildingDefinition> UTTDBattleWorldSubsystem::GetAvailableBuildingDefinitions() const
+{
+	TArray<FTTDBuildingDefinition> Result;
+	for (const TPair<FName, FTTDBuildingDefinition>& Pair : BuildingDefinitions)
+	{
+		const FTTDBuildingDefinition& BuildingDefinition = Pair.Value;
+		if (BuildingDefinition.RequiredDiagramId.IsNone() || DiagramIds.Contains(BuildingDefinition.RequiredDiagramId))
+		{
+			Result.Add(BuildingDefinition);
+		}
+	}
+
+	Result.Sort(
+		[](const FTTDBuildingDefinition& Left, const FTTDBuildingDefinition& Right)
+		{
+			return Left.BuildingId.LexicalLess(Right.BuildingId);
+		});
+	return Result;
+}
+
+bool UTTDBattleWorldSubsystem::IsBuildingAvailable(const FName BuildingId) const
+{
+	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(BuildingId);
+	return BuildingDefinition
+		&& (BuildingDefinition->RequiredDiagramId.IsNone() || DiagramIds.Contains(BuildingDefinition->RequiredDiagramId));
+}
+
 TArray<FTTDToyBoxRewardDefinition> UTTDBattleWorldSubsystem::GetToyBoxDefinitions() const
 {
 	TArray<FTTDToyBoxRewardDefinition> Result;
 	ToyBoxRewardDefinitions.GenerateValueArray(Result);
+	return Result;
+}
+
+TArray<FTTDBattleLevelDefinition> UTTDBattleWorldSubsystem::GetBattleLevelDefinitions() const
+{
+	TArray<FTTDBattleLevelDefinition> Result;
+	LevelDefinitions.GenerateValueArray(Result);
+	Result.Sort(
+		[](const FTTDBattleLevelDefinition& Left, const FTTDBattleLevelDefinition& Right)
+		{
+			return Left.LevelId.LexicalLess(Right.LevelId);
+		});
 	return Result;
 }
 
@@ -498,11 +678,64 @@ void UTTDBattleWorldSubsystem::SetRewardRandomSeed(const int32 Seed)
 	RewardRandomStream.Initialize(Seed);
 }
 
+float UTTDBattleWorldSubsystem::GetWaveRemainingSeconds() const
+{
+	if (CurrentWaveIndex < 0 || !WaveRuntimes.IsValidIndex(CurrentWaveIndex))
+	{
+		return 0.0f;
+	}
+
+	const FTTDBattleWaveRuntime& WaveRuntime = WaveRuntimes[CurrentWaveIndex];
+	if (BattlePhase != ETTDBattlePhase::WaveActive)
+	{
+		return 0.0f;
+	}
+
+	return FMath::Max(0.0f, WaveRuntime.WaveEndSeconds - BattleElapsedSeconds);
+}
+
+float UTTDBattleWorldSubsystem::GetPhaseRemainingSeconds() const
+{
+	if (CurrentWaveIndex >= 0 && WaveRuntimes.IsValidIndex(CurrentWaveIndex))
+	{
+		const FTTDBattleWaveRuntime& WaveRuntime = WaveRuntimes[CurrentWaveIndex];
+		if (BattlePhase == ETTDBattlePhase::Preparing)
+		{
+			return FMath::Max(0.0f, WaveRuntime.BufferStartSeconds - BattleElapsedSeconds);
+		}
+
+		if (BattlePhase == ETTDBattlePhase::Buffer)
+		{
+			return FMath::Max(0.0f, WaveRuntime.WaveStartSeconds - BattleElapsedSeconds);
+		}
+
+		if (BattlePhase == ETTDBattlePhase::WaveActive)
+		{
+			return FMath::Max(0.0f, WaveRuntime.WaveEndSeconds - BattleElapsedSeconds);
+		}
+	}
+
+	if (BattlePhase == ETTDBattlePhase::VictoryDelay)
+	{
+		return FMath::Max(0.0f, VictoryReturnReadySeconds - BattleElapsedSeconds);
+	}
+
+	return 0.0f;
+}
+
 void UTTDBattleWorldSubsystem::HandleCastleDestroyed(ATTDBattleCastleActor* DestroyedCastle)
 {
 	if (DestroyedCastle && DestroyedCastle == CastleActor)
 	{
 		EndBattle(ETTDBattleState::Defeat);
+	}
+}
+
+void UTTDBattleWorldSubsystem::HandleCastleDamaged(ATTDBattleCastleActor* DamagedCastle)
+{
+	if (DamagedCastle && DamagedCastle == CastleActor)
+	{
+		BroadcastCastleHealthChanged();
 	}
 }
 
@@ -545,7 +778,10 @@ void UTTDBattleWorldSubsystem::HandleEnemyKilled(ATTDBattleEnemyActor* Enemy)
 	}
 
 	AliveEnemyWeight = FMath::Max(0.0f, AliveEnemyWeight - Enemy->GetProgressWeight());
-	Currency += Enemy->GetCurrencyDrop();
+	if (Enemy->GetCurrencyDrop() > 0 && Enemy->GetCurrencyDropChance() > 0.0f && RewardRandomStream.FRand() <= Enemy->GetCurrencyDropChance())
+	{
+		Currency += Enemy->GetCurrencyDrop();
+	}
 
 	if (UTTDObjectPoolWorldSubsystem* PoolSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDObjectPoolWorldSubsystem>() : nullptr)
 	{
@@ -639,7 +875,7 @@ const FTTDBuildingDefinition* UTTDBattleWorldSubsystem::FindBuildingDefinition(c
 
 const FTTDToyBoxRewardDefinition* UTTDBattleWorldSubsystem::FindToyBoxDefinition(const FName ToyBoxId) const
 {
-	return ToyBoxRewardDefinitions.Find(ToyBoxId);
+	return ToyBoxRewardDefinitions.Find(NormalizeToyBoxId(ToyBoxId));
 }
 
 FTTDBattleBuildingRuntimeStats UTTDBattleWorldSubsystem::BuildRuntimeStatsForSlot(const FTTDBuildingDefinition& BuildingDefinition, const ATTDBuildSlotActor* Slot) const
@@ -675,6 +911,9 @@ FTTDBattleBuildingRuntimeStats UTTDBattleWorldSubsystem::BuildRuntimeStatsForSlo
 		case ETTDBattleAttribute::ProjectileSpeed:
 			ApplyModifier(RuntimeStats.ProjectileSpeed, Modifier);
 			break;
+		case ETTDBattleAttribute::MoveSpeed:
+			ApplyModifier(RuntimeStats.MoveSpeed, Modifier);
+			break;
 		default:
 			break;
 		}
@@ -685,6 +924,7 @@ FTTDBattleBuildingRuntimeStats UTTDBattleWorldSubsystem::BuildRuntimeStatsForSlo
 	RuntimeStats.AttackRange = FMath::Max(0.0f, RuntimeStats.AttackRange);
 	RuntimeStats.AttackInterval = FMath::Max(0.01f, RuntimeStats.AttackInterval);
 	RuntimeStats.ProjectileSpeed = FMath::Max(1.0f, RuntimeStats.ProjectileSpeed);
+	RuntimeStats.MoveSpeed = FMath::Max(0.0f, RuntimeStats.MoveSpeed);
 	return RuntimeStats;
 }
 
@@ -746,6 +986,13 @@ void UTTDBattleWorldSubsystem::LoadDefinitionsFromSettings()
 				Row.BuildingId = RowName;
 			}
 		});
+	if (FTTDBuildingDefinition* ProjectileTowerDefinition = BuildingDefinitions.Find(TEXT("ProjectileTower")))
+	{
+		if (ProjectileTowerDefinition->RequiredDiagramId.IsNone() || ProjectileTowerDefinition->RequiredDiagramId == TEXT("BasicTower"))
+		{
+			ProjectileTowerDefinition->RequiredDiagramId = TEXT("ProjectileTower");
+		}
+	}
 
 	LoadRowsIntoMap<FTTDToyBoxRewardDefinition>(
 		Settings->GetDataTableForTag(TAG_TTD_DataTable_Battle_ToyBoxRewards),
@@ -757,6 +1004,7 @@ void UTTDBattleWorldSubsystem::LoadDefinitionsFromSettings()
 				Row.ToyBoxId = RowName;
 			}
 		});
+	NormalizeLoadedToyBoxDefinitions();
 
 	LoadRowsIntoMap<FTTDBattleHeightEffectDefinition>(
 		Settings->GetDataTableForTag(TAG_TTD_DataTable_Battle_HeightEffects),
@@ -768,6 +1016,28 @@ void UTTDBattleWorldSubsystem::LoadDefinitionsFromSettings()
 				Row.HeightEffectId = RowName;
 			}
 		});
+}
+
+void UTTDBattleWorldSubsystem::NormalizeLoadedToyBoxDefinitions()
+{
+	if (FTTDToyBoxRewardDefinition* BasicToyBoxDefinition = ToyBoxRewardDefinitions.Find(BasicToyBoxId))
+	{
+		if (BasicToyBoxDefinition->ToyBoxId == LegacyBasicToyBoxId || BasicToyBoxDefinition->ToyBoxId.IsNone())
+		{
+			BasicToyBoxDefinition->ToyBoxId = BasicToyBoxId;
+		}
+		ToyBoxRewardDefinitions.Remove(LegacyBasicToyBoxId);
+		return;
+	}
+
+	FTTDToyBoxRewardDefinition LegacyDefinition;
+	if (!ToyBoxRewardDefinitions.RemoveAndCopyValue(LegacyBasicToyBoxId, LegacyDefinition))
+	{
+		return;
+	}
+
+	LegacyDefinition.ToyBoxId = BasicToyBoxId;
+	ToyBoxRewardDefinitions.Add(BasicToyBoxId, LegacyDefinition);
 }
 
 void UTTDBattleWorldSubsystem::GatherPlacedActors()
@@ -796,14 +1066,14 @@ bool UTTDBattleWorldSubsystem::ValidateBattleStart(const FName LevelId, FText& O
 {
 	if (LevelId.IsNone())
 	{
-		OutFailureReason = BattleText(TEXT("Default battle level id is empty."));
+		OutFailureReason = BattleText(TEXT("默认战斗关卡 ID 为空。"));
 		return false;
 	}
 
 	const FTTDBattleLevelDefinition* LevelDefinition = LevelDefinitions.Find(LevelId);
 	if (!LevelDefinition)
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Battle level {0} is not configured.")), FText::FromName(LevelId));
+		OutFailureReason = FText::Format(BattleText(TEXT("战斗关卡 {0} 未配置。")), FText::FromName(LevelId));
 		return false;
 	}
 
@@ -815,20 +1085,29 @@ bool UTTDBattleWorldSubsystem::ValidateLevelDefinition(const FName LevelId, cons
 {
 	if (SpawnPoints.IsEmpty())
 	{
-		OutFailureReason = BattleText(TEXT("Battle level requires at least one spawn point in the world."));
+		OutFailureReason = BattleText(TEXT("战斗关卡需要场景中至少有一个刷怪点。"));
 		return false;
 	}
 
 	if (BuildSlots.IsEmpty())
 	{
-		OutFailureReason = BattleText(TEXT("Battle level requires at least one build slot in the world."));
+		OutFailureReason = BattleText(TEXT("战斗关卡需要场景中至少有一个建造位。"));
 		return false;
 	}
 
 	UClass* CastleClass = LevelDefinition.CastleClass.LoadSynchronous();
 	if (CastleClass && !CastleClass->IsChildOf(ATTDBattleCastleActor::StaticClass()))
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Castle class for level {0} must derive from ATTDBattleCastleActor.")), FText::FromName(LevelId));
+		OutFailureReason = FText::Format(BattleText(TEXT("关卡 {0} 的城堡类必须继承 ATTDBattleCastleActor。")), FText::FromName(LevelId));
+		return false;
+	}
+
+	UClass* BackgroundClass = LevelDefinition.Background.bSpawnBackground
+		? LevelDefinition.Background.BackgroundClass.LoadSynchronous()
+		: nullptr;
+	if (BackgroundClass && !BackgroundClass->IsChildOf(ATTDBattleBackgroundActor::StaticClass()))
+	{
+		OutFailureReason = FText::Format(BattleText(TEXT("关卡 {0} 的背景类必须继承 ATTDBattleBackgroundActor。")), FText::FromName(LevelId));
 		return false;
 	}
 
@@ -837,7 +1116,7 @@ bool UTTDBattleWorldSubsystem::ValidateLevelDefinition(const FName LevelId, cons
 		const FTTDWaveDefinition* WaveDefinition = WaveDefinitions.Find(WaveId);
 		if (!WaveDefinition)
 		{
-			OutFailureReason = FText::Format(BattleText(TEXT("Battle level {0} references missing wave {1}.")), FText::FromName(LevelId), FText::FromName(WaveId));
+			OutFailureReason = FText::Format(BattleText(TEXT("战斗关卡 {0} 引用了未配置的波次 {1}。")), FText::FromName(LevelId), FText::FromName(WaveId));
 			return false;
 		}
 
@@ -851,8 +1130,8 @@ bool UTTDBattleWorldSubsystem::ValidateLevelDefinition(const FName LevelId, cons
 			if (EnemyEntry.Count > 0 && !HasSpawnPointForGroup(EnemyEntry.SpawnGroup))
 			{
 				OutFailureReason = EnemyEntry.SpawnGroup.IsNone()
-					? BattleText(TEXT("Wave requires a spawn point, but none are available."))
-					: FText::Format(BattleText(TEXT("Wave requires spawn group {0}, but no matching spawn point exists.")), FText::FromName(EnemyEntry.SpawnGroup));
+					? BattleText(TEXT("波次需要刷怪点，但当前没有可用刷怪点。"))
+					: FText::Format(BattleText(TEXT("波次需要刷怪组 {0}，但场景中没有匹配刷怪点。")), FText::FromName(EnemyEntry.SpawnGroup));
 				return false;
 			}
 		}
@@ -867,14 +1146,14 @@ bool UTTDBattleWorldSubsystem::ValidateEnemyDefinition(const FName EnemyId, FTex
 	const FTTDEnemyDefinition* EnemyDefinition = EnemyDefinitions.Find(EnemyId);
 	if (!EnemyDefinition)
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Enemy {0} is not configured.")), FText::FromName(EnemyId));
+		OutFailureReason = FText::Format(BattleText(TEXT("敌人 {0} 未配置。")), FText::FromName(EnemyId));
 		return false;
 	}
 
 	UClass* EnemyClass = ResolveEnemyClass(*EnemyDefinition);
 	if (!IsPoolableActorClass(EnemyClass, ATTDBattleEnemyActor::StaticClass()))
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Enemy class for {0} must derive from ATTDBattleEnemyActor and implement pooled object interface.")), FText::FromName(EnemyId));
+		OutFailureReason = FText::Format(BattleText(TEXT("敌人 {0} 的类必须继承 ATTDBattleEnemyActor 并实现池化接口。")), FText::FromName(EnemyId));
 		return false;
 	}
 
@@ -899,7 +1178,7 @@ bool UTTDBattleWorldSubsystem::ValidateProjectileBuildingDefinitions(FText& OutF
 
 		if (!IsPoolableActorClass(ProjectileClass, ATTDBattleProjectileActor::StaticClass()))
 		{
-			OutFailureReason = FText::Format(BattleText(TEXT("Projectile class for building {0} must derive from ATTDBattleProjectileActor and implement pooled object interface.")), FText::FromName(BuildingDefinition.BuildingId));
+			OutFailureReason = FText::Format(BattleText(TEXT("建筑 {0} 的投射物类必须继承 ATTDBattleProjectileActor 并实现池化接口。")), FText::FromName(BuildingDefinition.BuildingId));
 			return false;
 		}
 	}
@@ -1024,22 +1303,65 @@ void UTTDBattleWorldSubsystem::CleanupBattle()
 	}
 
 	CastleActor = nullptr;
+	if (IsValid(Cast<AActor>(ActiveBackgroundActor)))
+	{
+		Cast<AActor>(ActiveBackgroundActor)->Destroy();
+	}
+
+	ActiveBackgroundActor = nullptr;
 	SpawnPoints.Reset();
 	BuildSlots.Reset();
 	BattleTargets.Reset();
 	PendingSpawns.Reset();
+	WaveRuntimes.Reset();
 	DiagramIds.Reset();
 	PartCounts.Reset();
 	ToyBoxCounts.Reset();
 	ActiveLevelId = NAME_None;
 	BattleState = ETTDBattleState::Inactive;
+	BattlePhase = ETTDBattlePhase::None;
 	BattleElapsedSeconds = 0.0f;
 	TotalEnemyWeight = 0.0f;
 	RemainingUnspawnedWeight = 0.0f;
 	AliveEnemyWeight = 0.0f;
 	FrozenProgress = 0.0f;
+	VictoryReturnReadySeconds = 0.0f;
 	Currency = 0;
+	CurrentWaveIndex = INDEX_NONE;
 	bUseFrozenProgress = false;
+	bPostBattleReturnReady = false;
+}
+
+bool UTTDBattleWorldSubsystem::SpawnBackgroundForLevel(const FTTDBattleLevelDefinition& LevelDefinition)
+{
+	if (!LevelDefinition.Background.bSpawnBackground)
+	{
+		return true;
+	}
+
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+
+	UClass* BackgroundClass = LevelDefinition.Background.BackgroundClass.LoadSynchronous();
+	if (!BackgroundClass)
+	{
+		BackgroundClass = ATTDBattleBackgroundActor::StaticClass();
+	}
+
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ActiveBackgroundActor = World->SpawnActor<ATTDBattleBackgroundActor>(BackgroundClass, LevelDefinition.Background.Transform, SpawnParameters);
+	if (!ActiveBackgroundActor)
+	{
+		UE_LOG(LogTTDBattle, Warning, TEXT("StartBattle failed: background class %s did not spawn a battle background."), *GetNameSafe(BackgroundClass));
+		return false;
+	}
+
+	ActiveBackgroundActor->ConfigureBackground(LevelDefinition.Background);
+	return true;
 }
 
 bool UTTDBattleWorldSubsystem::SpawnCastleForLevel(const FTTDBattleLevelDefinition& LevelDefinition)
@@ -1073,7 +1395,8 @@ bool UTTDBattleWorldSubsystem::SpawnCastleForLevel(const FTTDBattleLevelDefiniti
 void UTTDBattleWorldSubsystem::BuildSpawnQueueForLevel(const FTTDBattleLevelDefinition& LevelDefinition)
 {
 	PendingSpawns.Reset();
-	float WaveStartTime = 0.0f;
+	WaveRuntimes.Reset();
+	float TimelineCursor = FMath::Max(0.0f, LevelDefinition.PreparationDurationSeconds);
 
 	for (const FName WaveId : LevelDefinition.WaveIds)
 	{
@@ -1084,8 +1407,13 @@ void UTTDBattleWorldSubsystem::BuildSpawnQueueForLevel(const FTTDBattleLevelDefi
 			continue;
 		}
 
-		WaveStartTime += FMath::Max(0.0f, WaveDefinition->DelayBeforeWave);
-		float WaveDuration = 0.0f;
+		FTTDBattleWaveRuntime WaveRuntime;
+		WaveRuntime.WaveId = WaveId;
+		WaveRuntime.BufferStartSeconds = TimelineCursor;
+		TimelineCursor += FMath::Max(0.0f, WaveDefinition->DelayBeforeWave);
+		WaveRuntime.WaveStartSeconds = TimelineCursor;
+
+		float LastSpawnOffset = 0.0f;
 		for (const FTTDWaveEnemyEntry& EnemyEntry : WaveDefinition->EnemyEntries)
 		{
 			const FTTDEnemyDefinition* EnemyDefinition = EnemyDefinitions.Find(EnemyEntry.EnemyId);
@@ -1101,16 +1429,20 @@ void UTTDBattleWorldSubsystem::BuildSpawnQueueForLevel(const FTTDBattleLevelDefi
 				FTTDBattlePendingSpawn PendingSpawn;
 				PendingSpawn.EnemyId = EnemyEntry.EnemyId;
 				PendingSpawn.SpawnGroup = EnemyEntry.SpawnGroup;
-				PendingSpawn.SpawnTimeSeconds = WaveStartTime + SpawnIndex * EntryInterval;
+				PendingSpawn.SpawnTimeSeconds = WaveRuntime.WaveStartSeconds + SpawnIndex * EntryInterval;
 				PendingSpawn.ProgressWeight = FMath::Max(0.0f, EnemyDefinition->ProgressWeight);
 				PendingSpawns.Add(PendingSpawn);
 				TotalEnemyWeight += PendingSpawn.ProgressWeight;
 				RemainingUnspawnedWeight += PendingSpawn.ProgressWeight;
-				WaveDuration = FMath::Max(WaveDuration, SpawnIndex * EntryInterval);
+				LastSpawnOffset = FMath::Max(LastSpawnOffset, SpawnIndex * EntryInterval);
 			}
 		}
 
-		WaveStartTime += WaveDuration;
+		const float ConfiguredDuration = FMath::Max(0.0f, WaveDefinition->WaveDurationSeconds);
+		const float WaveDuration = ConfiguredDuration > 0.0f ? ConfiguredDuration : LastSpawnOffset;
+		WaveRuntime.WaveEndSeconds = WaveRuntime.WaveStartSeconds + WaveDuration;
+		TimelineCursor = WaveRuntime.WaveEndSeconds;
+		WaveRuntimes.Add(WaveRuntime);
 	}
 
 	PendingSpawns.Sort(
@@ -1149,14 +1481,14 @@ bool UTTDBattleWorldSubsystem::SpawnEnemy(const FTTDBattlePendingSpawn& PendingS
 	const FTTDEnemyDefinition* EnemyDefinition = EnemyDefinitions.Find(PendingSpawn.EnemyId);
 	if (!EnemyDefinition)
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Enemy {0} is not configured.")), FText::FromName(PendingSpawn.EnemyId));
+		OutFailureReason = FText::Format(BattleText(TEXT("敌人 {0} 未配置。")), FText::FromName(PendingSpawn.EnemyId));
 		return false;
 	}
 
 	UClass* EnemyClass = ResolveEnemyClass(*EnemyDefinition);
 	if (!IsPoolableActorClass(EnemyClass, ATTDBattleEnemyActor::StaticClass()))
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Enemy class for {0} is invalid.")), FText::FromName(PendingSpawn.EnemyId));
+		OutFailureReason = FText::Format(BattleText(TEXT("敌人 {0} 的类无效。")), FText::FromName(PendingSpawn.EnemyId));
 		return false;
 	}
 
@@ -1164,8 +1496,8 @@ bool UTTDBattleWorldSubsystem::SpawnEnemy(const FTTDBattlePendingSpawn& PendingS
 	if (!SpawnPoint)
 	{
 		OutFailureReason = PendingSpawn.SpawnGroup.IsNone()
-			? BattleText(TEXT("No spawn point is available."))
-			: FText::Format(BattleText(TEXT("No spawn point found for group {0}.")), FText::FromName(PendingSpawn.SpawnGroup));
+			? BattleText(TEXT("没有可用刷怪点。"))
+			: FText::Format(BattleText(TEXT("没有找到刷怪组 {0} 的刷怪点。")), FText::FromName(PendingSpawn.SpawnGroup));
 		return false;
 	}
 
@@ -1180,7 +1512,7 @@ bool UTTDBattleWorldSubsystem::SpawnEnemy(const FTTDBattlePendingSpawn& PendingS
 	ATTDBattleEnemyActor* Enemy = Cast<ATTDBattleEnemyActor>(Actor);
 	if (!Enemy)
 	{
-		OutFailureReason = FText::Format(BattleText(TEXT("Enemy class {0} could not be acquired from the object pool.")), FText::FromString(GetNameSafe(EnemyClass)));
+		OutFailureReason = FText::Format(BattleText(TEXT("敌人类 {0} 无法从对象池获取。")), FText::FromString(GetNameSafe(EnemyClass)));
 		UE_LOG(LogTTDBattle, Warning, TEXT("%s"), *OutFailureReason.ToString());
 		return false;
 	}
@@ -1215,9 +1547,61 @@ ATTDBattleSpawnPointActor* UTTDBattleWorldSubsystem::PickSpawnPoint(const FName 
 	return MatchingPoints[RewardRandomStream.RandRange(0, MatchingPoints.Num() - 1)];
 }
 
+void UTTDBattleWorldSubsystem::UpdateBattlePhase()
+{
+	if (BattleState != ETTDBattleState::Running)
+	{
+		return;
+	}
+
+	if (WaveRuntimes.IsEmpty())
+	{
+		SetBattlePhase(ETTDBattlePhase::WaveActive, INDEX_NONE);
+		return;
+	}
+
+	int32 NewWaveIndex = WaveRuntimes.Num() - 1;
+	ETTDBattlePhase NewPhase = ETTDBattlePhase::WaveActive;
+	for (int32 Index = 0; Index < WaveRuntimes.Num(); ++Index)
+	{
+		const FTTDBattleWaveRuntime& WaveRuntime = WaveRuntimes[Index];
+		if (BattleElapsedSeconds < WaveRuntime.WaveStartSeconds)
+		{
+			NewWaveIndex = Index;
+			NewPhase = Index == 0 && BattleElapsedSeconds < WaveRuntime.BufferStartSeconds
+				? ETTDBattlePhase::Preparing
+				: ETTDBattlePhase::Buffer;
+			break;
+		}
+
+		if (BattleElapsedSeconds <= WaveRuntime.WaveEndSeconds)
+		{
+			NewWaveIndex = Index;
+			NewPhase = ETTDBattlePhase::WaveActive;
+			break;
+		}
+	}
+
+	SetBattlePhase(NewPhase, NewWaveIndex);
+}
+
+void UTTDBattleWorldSubsystem::SetBattlePhase(const ETTDBattlePhase NewPhase, const int32 NewWaveIndex)
+{
+	if (BattlePhase == NewPhase && CurrentWaveIndex == NewWaveIndex)
+	{
+		return;
+	}
+
+	BattlePhase = NewPhase;
+	CurrentWaveIndex = NewWaveIndex;
+	BroadcastPhaseChanged();
+}
+
 void UTTDBattleWorldSubsystem::CheckVictoryCondition()
 {
-	if (BattleState == ETTDBattleState::Running && PendingSpawns.IsEmpty() && ActiveEnemies.IsEmpty())
+	const bool bAllWaveTimersExpired = WaveRuntimes.IsEmpty()
+		|| BattleElapsedSeconds >= WaveRuntimes.Last().WaveEndSeconds;
+	if (BattleState == ETTDBattleState::Running && bAllWaveTimersExpired && PendingSpawns.IsEmpty() && ActiveEnemies.IsEmpty())
 	{
 		EndBattle(ETTDBattleState::Victory);
 	}
@@ -1284,9 +1668,10 @@ void UTTDBattleWorldSubsystem::AddPartCount(const FName PartId, const int32 Coun
 
 void UTTDBattleWorldSubsystem::AddToyBoxCount(const FName ToyBoxId, const int32 Count)
 {
-	if (!ToyBoxId.IsNone() && Count > 0)
+	const FName NormalizedToyBoxId = NormalizeToyBoxId(ToyBoxId);
+	if (!NormalizedToyBoxId.IsNone() && Count > 0)
 	{
-		ToyBoxCounts.FindOrAdd(ToyBoxId) += Count;
+		ToyBoxCounts.FindOrAdd(NormalizedToyBoxId) += Count;
 	}
 }
 
@@ -1359,6 +1744,23 @@ void UTTDBattleWorldSubsystem::BroadcastInventoryChanged() const
 	}
 }
 
+void UTTDBattleWorldSubsystem::BroadcastCastleHealthChanged() const
+{
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UGameplayMessageSubsystem* MessageSubsystem = GameInstance->GetSubsystem<UGameplayMessageSubsystem>())
+			{
+				FTTDBattleCastleHealthChangedMessage Message;
+				Message.CurrentHealth = GetCastleCurrentHealth();
+				Message.MaxHealth = GetCastleMaxHealth();
+				MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Battle_CastleHealth_Changed, Message);
+			}
+		}
+	}
+}
+
 void UTTDBattleWorldSubsystem::BroadcastBuildingPlaced(const FName BuildingId, const FName SlotId) const
 {
 	if (const UWorld* World = GetWorld())
@@ -1388,6 +1790,26 @@ void UTTDBattleWorldSubsystem::BroadcastBattleEnded(const ETTDBattleState FinalS
 				Message.LevelId = ActiveLevelId;
 				Message.FinalState = FinalState;
 				MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Battle_Ended, Message);
+			}
+		}
+	}
+}
+
+void UTTDBattleWorldSubsystem::BroadcastPhaseChanged() const
+{
+	if (const UWorld* World = GetWorld())
+	{
+		if (const UGameInstance* GameInstance = World->GetGameInstance())
+		{
+			if (UGameplayMessageSubsystem* MessageSubsystem = GameInstance->GetSubsystem<UGameplayMessageSubsystem>())
+			{
+				FTTDBattlePhaseChangedMessage Message;
+				Message.LevelId = ActiveLevelId;
+				Message.Phase = BattlePhase;
+				Message.CurrentWaveNumber = GetCurrentWaveNumber();
+				Message.TotalWaveCount = GetTotalWaveCount();
+				Message.RemainingSeconds = GetPhaseRemainingSeconds();
+				MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Battle_Phase_Changed, Message);
 			}
 		}
 	}

@@ -15,7 +15,7 @@ UTTDDeveloperSettings::UTTDDeveloperSettings()
 	GameplayTagDataTables.Add(TAG_TTD_DataTable_Battle_ToyBoxRewards);
 	GameplayTagDataTables.Add(TAG_TTD_DataTable_Battle_HeightEffects);
 
-	DefaultUnlockedDiagramIds = { TEXT("JokerTower"), TEXT("BatteryBlaster") };
+	DefaultUnlockedDiagramIds = { TEXT("BasicTower"), TEXT("ProjectileTower") };
 	DefaultUnlockedToyBoxIds = { TEXT("BasicToyBox"), TEXT("MechanicToyBox"), TEXT("EnergyToyBox") };
 	DefaultUnlockedPartIds = { TEXT("Gear"), TEXT("Spring") };
 }

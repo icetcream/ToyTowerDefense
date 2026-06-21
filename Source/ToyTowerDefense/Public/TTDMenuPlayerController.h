@@ -7,6 +7,7 @@
 class ATTDBuildSlotActor;
 class ACameraActor;
 class UUserWidget;
+struct FTTDBattleLoadout;
 
 UCLASS()
 class TOYTOWERDEFENSE_API ATTDMenuPlayerController : public APlayerController
@@ -29,7 +30,18 @@ public:
 	void ShowResearchLab();
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Menu")
+	void ShowWarehouse();
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Menu")
+	void ShowBattleLevelSelect();
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Menu")
+	void ShowBattlePreparation(FName LevelId);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Menu")
 	bool ShowBattleLevel();
+
+	bool StartPreparedBattle(FName LevelId, const FTTDBattleLoadout& Loadout);
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	FText GetLastBattleFailureReason() const { return LastBattleFailureReason; }
@@ -59,6 +71,15 @@ protected:
 	TSubclassOf<UUserWidget> ResearchLabWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Toy Tower Defense|Menu")
+	TSubclassOf<UUserWidget> WarehouseWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Toy Tower Defense|Menu")
+	TSubclassOf<UUserWidget> BattleLevelSelectWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Toy Tower Defense|Menu")
+	TSubclassOf<UUserWidget> BattlePreparationWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Toy Tower Defense|Menu")
 	TSubclassOf<UUserWidget> BattleHUDWidgetClass;
 
 private:
@@ -66,6 +87,7 @@ private:
 	TObjectPtr<UUserWidget> CurrentWidget;
 
 	FName SelectedBattleBuildingId;
+	FName PendingBattleLevelId;
 	FText LastBattleFailureReason;
 	TWeakObjectPtr<ACameraActor> BattleCameraActor;
 

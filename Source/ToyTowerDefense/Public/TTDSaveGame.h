@@ -11,6 +11,11 @@ class TOYTOWERDEFENSE_API UTTDSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
+	static constexpr int32 CurrentSaveVersion = 2;
+
+	UPROPERTY()
+	int32 SaveVersion = 0;
+
 	UPROPERTY()
 	TArray<FName> UnlockedDiagramIds;
 
@@ -19,6 +24,9 @@ public:
 
 	UPROPERTY()
 	TArray<FName> UnlockedPartIds;
+
+	UPROPERTY()
+	TArray<FTTDNameStack> PartInventory;
 
 	UPROPERTY()
 	TArray<FTTDCraftQueueItem> CraftingQueue;

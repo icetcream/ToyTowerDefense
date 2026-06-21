@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "{0AE48B31-4465-79BF-7E36-83845DEBE50A}",
+	"EngineAssociation": "{50C81232-4DD6-6FC3-A5DC-4FB25FE59BFB}",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -23,6 +23,10 @@
 			"Enabled": true
 		},
 		{
+			"Name": "WorldConditions",
+			"Enabled": true
+		},
+		{
 			"Name": "PythonScriptPlugin",
 			"Enabled": true,
 			"TargetAllowList": [
@@ -35,6 +39,14 @@
 			"TargetAllowList": [
 				"Editor"
 			]
+		},
+		{
+			"Name": "ModelContextProtocol",
+			"Enabled": true
+		},
+		{
+			"Name": "Terminal",
+			"Enabled": true
 		}
 	]
 }

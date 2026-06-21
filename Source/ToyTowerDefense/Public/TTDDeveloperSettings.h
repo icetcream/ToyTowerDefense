@@ -35,6 +35,9 @@ public:
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Battle")
 	FName DefaultBattleLevelId = TEXT("PrototypeBattle");
 
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Battle|Debug")
+	bool bShowBattleTestCheatButton = false;
+
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Settings")
 	UDataTable* GetDataTableForTag(FGameplayTag DataTableTag) const;
 };

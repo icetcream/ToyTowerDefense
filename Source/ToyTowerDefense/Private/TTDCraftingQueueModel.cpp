@@ -32,7 +32,6 @@ bool FTTDCraftingQueueModel::ClaimCompletedItem(const FGuid& QueueId, FTTDCraftQ
 		{
 			return Item.QueueId == QueueId && Item.bCompleted;
 		});
-
 	if (ItemIndex == INDEX_NONE)
 	{
 		return false;

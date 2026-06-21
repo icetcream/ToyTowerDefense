@@ -13,10 +13,14 @@ class TOYTOWERDEFENSE_API UTTDMainMenuWidget : public UUserWidget
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 private:
 	UPROPERTY(Transient)
 	TObjectPtr<UTextBlock> StatusText;
+
+	float EntranceElapsed = 0.0f;
 
 	void HandleWarehouseClicked();
 	void HandleLevelChallengeClicked();

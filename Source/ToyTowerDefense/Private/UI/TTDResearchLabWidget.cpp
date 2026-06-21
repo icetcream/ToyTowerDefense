@@ -6,6 +6,8 @@
 #include "Components/GridSlot.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
@@ -15,32 +17,36 @@
 #include "TTDMenuPlayerController.h"
 #include "TTDResearchSubsystem.h"
 #include "UI/TTDActionButtonWidget.h"
+#include "UI/TTDUIDisplayNames.h"
+#include "UI/TTDUIStyle.h"
 
 namespace
 {
-	UTTDActionButtonWidget* MakeButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate)
+	UTTDActionButtonWidget* MakeButton(UWidgetTree* WidgetTree, const FText& Label, const bool bEnabled, const FSimpleDelegate& Delegate, const ETTDActionButtonVariant Variant = ETTDActionButtonVariant::Secondary)
 	{
 		UTTDActionButtonWidget* Button = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
-		Button->Configure(Label, bEnabled, Delegate);
+		Button->Configure(Label, bEnabled, Delegate, Variant);
 		return Button;
 	}
 
-	FText PartIdsToText(const TArray<FName>& PartIds)
+	UBorder* MakePanel(UWidgetTree* WidgetTree, const FLinearColor& Color, const FMargin& Padding)
 	{
-		TArray<FString> Names;
-		for (const FName PartId : PartIds)
-		{
-			Names.Add(PartId.ToString());
-		}
-		return FText::FromString(FString::Join(Names, TEXT("、")));
+		UBorder* Panel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
+		TTDUIStyle::ApplyPanel(Panel, Color, Padding);
+		return Panel;
 	}
 
-	void UseDarkText(UTextBlock* Text)
+	UTextBlock* MakeText(UWidgetTree* WidgetTree, const FText& TextValue, const int32 FontSize, const FLinearColor& Color = TTDUIStyle::Ink(), const ETextJustify::Type Justification = ETextJustify::Left)
 	{
-		if (Text)
-		{
-			Text->SetColorAndOpacity(FSlateColor(FLinearColor::Black));
-		}
+		UTextBlock* Text = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+		Text->SetText(TextValue);
+		TTDUIStyle::ApplyText(Text, FontSize, Color, Justification, true);
+		return Text;
+	}
+
+	FText PartIdsToText(const UGameInstance* GameInstance, const TArray<FName>& PartIds)
+	{
+		return FText::FromString(TTDUIDisplayNames::JoinPartIds(GameInstance, PartIds));
 	}
 }
 
@@ -49,35 +55,91 @@ void UTTDResearchLabWidget::NativeOnInitialized()
 	Super::NativeOnInitialized();
 
 	UBorder* Root = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Root->SetBrushColor(FLinearColor(0.86f, 0.91f, 1.0f, 1.0f));
-	Root->SetPadding(FMargin(20.0f));
+	TTDUIStyle::ApplyPanel(Root, TTDUIStyle::Backdrop(), FMargin(18.0f));
 	WidgetTree->RootWidget = Root;
 
+	UOverlay* RootOverlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+	Root->AddChild(RootOverlay);
+
 	UHorizontalBox* RootRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	Root->AddChild(RootRow);
+	RootOverlay->AddChildToOverlay(RootRow);
+
+	UBorder* SidePanel = MakePanel(WidgetTree, TTDUIStyle::Cardboard(), FMargin(16.0f, 18.0f));
+	UHorizontalBoxSlot* SidePanelSlot = RootRow->AddChildToHorizontalBox(SidePanel);
+	SidePanelSlot->SetPadding(FMargin(0.0f, 0.0f, 18.0f, 0.0f));
+	SidePanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
 
 	UVerticalBox* SideNav = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	UHorizontalBoxSlot* SideSlot = RootRow->AddChildToHorizontalBox(SideNav);
-	SideSlot->SetPadding(FMargin(0.0f, 0.0f, 16.0f, 0.0f));
-	SideSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+	SidePanel->AddChild(SideNav);
+
+	UTextBlock* NavTitle = MakeText(WidgetTree, FText::FromString(TEXT("工坊")), 24, TTDUIStyle::Cream(), ETextJustify::Center);
+	UVerticalBoxSlot* NavTitleSlot = SideNav->AddChildToVerticalBox(NavTitle);
+	NavTitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 18.0f));
+	NavTitleSlot->SetHorizontalAlignment(HAlign_Center);
 
 	FSimpleDelegate BackDelegate;
 	BackDelegate.BindUObject(this, &UTTDResearchLabWidget::HandleBackClicked);
-	SideNav->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("返回")), true, BackDelegate));
+	SideNav->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("返回")), true, BackDelegate, ETTDActionButtonVariant::Danger));
 
 	FSimpleDelegate AlmanacDelegate;
 	AlmanacDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderAlmanac);
 	UVerticalBoxSlot* AlmanacSlot = SideNav->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("图鉴")), true, AlmanacDelegate));
-	AlmanacSlot->SetPadding(FMargin(0.0f, 20.0f, 0.0f, 0.0f));
+	AlmanacSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
 
 	FSimpleDelegate ResearchDelegate;
 	ResearchDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderResearch);
-	UVerticalBoxSlot* ResearchSlot = SideNav->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("研发")), true, ResearchDelegate));
+	UVerticalBoxSlot* ResearchSlot = SideNav->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("研发")), true, ResearchDelegate, ETTDActionButtonVariant::Primary));
 	ResearchSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
 
+	UBorder* ContentPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(24.0f));
+	UHorizontalBoxSlot* ContentPanelSlot = RootRow->AddChildToHorizontalBox(ContentPanel);
+	ContentPanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+
 	ContentBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	UHorizontalBoxSlot* ContentSlot = RootRow->AddChildToHorizontalBox(ContentBox);
-	ContentSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	ContentPanel->AddChild(ContentBox);
+
+	DetailOverlay = MakePanel(WidgetTree, FLinearColor(0.188f, 0.149f, 0.114f, 0.66f), FMargin(32.0f));
+	DetailOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	UOverlaySlot* DetailOverlaySlot = RootOverlay->AddChildToOverlay(DetailOverlay);
+	DetailOverlaySlot->SetHorizontalAlignment(HAlign_Fill);
+	DetailOverlaySlot->SetVerticalAlignment(VAlign_Fill);
+
+	RenderResearch();
+}
+
+void UTTDResearchLabWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	TTDUIStyle::ResetFadeIn(this, EntranceElapsed);
+	RegisterMessageListeners();
+	UpdateResearchQueueRefreshTimer();
+}
+
+void UTTDResearchLabWidget::NativeDestruct()
+{
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(ResearchQueueRefreshTimerHandle);
+	}
+	UnregisterMessageListeners();
+	Super::NativeDestruct();
+}
+
+void UTTDResearchLabWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	TTDUIStyle::TickFadeIn(this, EntranceElapsed, InDeltaTime);
+}
+
+UTTDResearchSubsystem* UTTDResearchLabWidget::GetResearchSubsystem() const
+{
+	const UGameInstance* GameInstance = GetGameInstance();
+	return GameInstance ? GameInstance->GetSubsystem<UTTDResearchSubsystem>() : nullptr;
+}
+
+void UTTDResearchLabWidget::RegisterMessageListeners()
+{
+	UnregisterMessageListeners();
 
 	if (UGameInstance* GameInstance = GetGameInstance())
 	{
@@ -92,40 +154,20 @@ void UTTDResearchLabWidget::NativeOnInitialized()
 				TAG_TTD_Message_Research_Collection_Changed,
 				this,
 				&UTTDResearchLabWidget::HandleCollectionChangedMessage);
+
+			InventoryChangedListenerHandle = MessageSubsystem->RegisterListener<FTTDResearchInventoryChangedMessage>(
+				TAG_TTD_Message_Research_Inventory_Changed,
+				this,
+				&UTTDResearchLabWidget::HandleInventoryChangedMessage);
 		}
 	}
-
-	RenderResearch();
 }
 
-void UTTDResearchLabWidget::NativeDestruct()
+void UTTDResearchLabWidget::UnregisterMessageListeners()
 {
 	QueueChangedListenerHandle.Unregister();
 	CollectionChangedListenerHandle.Unregister();
-	Super::NativeDestruct();
-}
-
-void UTTDResearchLabWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTime)
-{
-	Super::NativeTick(MyGeometry, InDeltaTime);
-
-	if (!bShowingResearch)
-	{
-		return;
-	}
-
-	ResearchRefreshAccumulator += InDeltaTime;
-	if (ResearchRefreshAccumulator >= 0.5f)
-	{
-		ResearchRefreshAccumulator = 0.0f;
-		RefreshResearchQueueButtons();
-	}
-}
-
-UTTDResearchSubsystem* UTTDResearchLabWidget::GetResearchSubsystem() const
-{
-	const UGameInstance* GameInstance = GetGameInstance();
-	return GameInstance ? GameInstance->GetSubsystem<UTTDResearchSubsystem>() : nullptr;
+	InventoryChangedListenerHandle.Unregister();
 }
 
 void UTTDResearchLabWidget::HandleBackClicked()
@@ -138,7 +180,7 @@ void UTTDResearchLabWidget::HandleBackClicked()
 
 void UTTDResearchLabWidget::HandleQueueChangedMessage(FGameplayTag Channel, const FTTDResearchQueueChangedMessage& Message)
 {
-	if (bShowingResearch && !bSuppressQueueChangedRefresh)
+	if (bShowingResearch && !bShowingDiagramResearch && !bSuppressQueueChangedRefresh)
 	{
 		RenderResearch();
 	}
@@ -146,16 +188,30 @@ void UTTDResearchLabWidget::HandleQueueChangedMessage(FGameplayTag Channel, cons
 
 void UTTDResearchLabWidget::HandleCollectionChangedMessage(FGameplayTag Channel, const FTTDResearchCollectionChangedMessage& Message)
 {
-	if (!bShowingResearch)
+	if (bShowingDiagramResearch)
+	{
+		RenderDiagramResearch();
+	}
+	else if (!bShowingResearch)
 	{
 		RenderAlmanac();
+	}
+}
+
+void UTTDResearchLabWidget::HandleInventoryChangedMessage(FGameplayTag Channel, const FTTDResearchInventoryChangedMessage& Message)
+{
+	if (bShowingDiagramResearch)
+	{
+		RenderDiagramResearch();
 	}
 }
 
 void UTTDResearchLabWidget::RenderAlmanac()
 {
 	bShowingResearch = false;
+	bShowingDiagramResearch = false;
 	LastFeedback = FText::GetEmpty();
+	UpdateResearchQueueRefreshTimer();
 
 	if (!ContentBox)
 	{
@@ -165,29 +221,28 @@ void UTTDResearchLabWidget::RenderAlmanac()
 	ContentBox->ClearChildren();
 	QueueSlotButtons.Reset();
 
-	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Title->SetText(FText::FromString(TEXT("研究所 / 图鉴")));
-	UseDarkText(Title);
-	FSlateFontInfo TitleFont = Title->GetFont();
-	TitleFont.Size = 32;
-	Title->SetFont(TitleFont);
+	UTextBlock* Title = MakeText(WidgetTree, FText::FromString(TEXT("研究所 / 图鉴")), 32);
 	ContentBox->AddChildToVerticalBox(Title);
 
 	UHorizontalBox* Tabs = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ContentBox->AddChildToVerticalBox(Tabs);
+	UVerticalBoxSlot* TabsSlot = ContentBox->AddChildToVerticalBox(Tabs);
+	TabsSlot->SetPadding(FMargin(0.0f, 14.0f, 0.0f, 18.0f));
 
 	FSimpleDelegate DiagramDelegate;
 	DiagramDelegate.BindUObject(this, &UTTDResearchLabWidget::SetCollectionCategory, ETTDCollectionCategory::Diagram);
-	Tabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("图纸")), true, DiagramDelegate));
+	Tabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("图纸")), true, DiagramDelegate, ActiveCollectionCategory == ETTDCollectionCategory::Diagram ? ETTDActionButtonVariant::Primary : ETTDActionButtonVariant::Secondary));
 
 	FSimpleDelegate ToyBoxDelegate;
 	ToyBoxDelegate.BindUObject(this, &UTTDResearchLabWidget::SetCollectionCategory, ETTDCollectionCategory::ToyBox);
-	UHorizontalBoxSlot* ToyBoxTabSlot = Tabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("玩具盒")), true, ToyBoxDelegate));
+	UHorizontalBoxSlot* ToyBoxTabSlot = Tabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("玩具盒")), true, ToyBoxDelegate, ActiveCollectionCategory == ETTDCollectionCategory::ToyBox ? ETTDActionButtonVariant::Primary : ETTDActionButtonVariant::Secondary));
 	ToyBoxTabSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
 
+	UBorder* GridPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(14.0f));
+	UVerticalBoxSlot* GridPanelSlot = ContentBox->AddChildToVerticalBox(GridPanel);
+	GridPanelSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+
 	UScrollBox* ScrollBox = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
-	UVerticalBoxSlot* ScrollSlot = ContentBox->AddChildToVerticalBox(ScrollBox);
-	ScrollSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 16.0f));
+	GridPanel->AddChild(ScrollBox);
 
 	UGridPanel* Grid = WidgetTree->ConstructWidget<UGridPanel>(UGridPanel::StaticClass());
 	ScrollBox->AddChild(Grid);
@@ -198,57 +253,135 @@ void UTTDResearchLabWidget::RenderAlmanac()
 		for (int32 Index = 0; Index < Entries.Num(); ++Index)
 		{
 			const FTTDCollectionEntry Entry = Entries[Index];
-			FText ButtonLabel = Entry.bUnlocked ? Entry.DisplayName : FText::FromString(TEXT("未解锁"));
+			const FText ButtonLabel = Entry.bUnlocked ? Entry.DisplayName : FText::FromString(TEXT("未解锁"));
 			FSimpleDelegate EntryDelegate;
 			EntryDelegate.BindWeakLambda(this, [this, Entry]()
 			{
-				LastFeedback = DescribeEntry(Entry);
-				RenderAlmanac();
+				ShowEntryDetails(Entry);
 			});
 
-			UTTDActionButtonWidget* EntryButton = MakeButton(WidgetTree, ButtonLabel, Entry.bUnlocked, EntryDelegate);
+			UTTDActionButtonWidget* EntryButton = MakeButton(WidgetTree, ButtonLabel, Entry.bUnlocked, EntryDelegate, ETTDActionButtonVariant::QueueSlot);
 			UGridSlot* GridSlot = Grid->AddChildToGrid(EntryButton, Index / 5, Index % 5);
 			GridSlot->SetPadding(FMargin(8.0f));
 		}
 	}
 
-	FeedbackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	FeedbackText->SetAutoWrapText(true);
-	FeedbackText->SetText(LastFeedback.IsEmpty() ? FText::FromString(TEXT("点击已解锁内容查看说明。")) : LastFeedback);
-	UseDarkText(FeedbackText);
-	ContentBox->AddChildToVerticalBox(FeedbackText);
+	UBorder* FeedbackPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(18.0f, 12.0f));
+	UVerticalBoxSlot* FeedbackPanelSlot = ContentBox->AddChildToVerticalBox(FeedbackPanel);
+	FeedbackPanelSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
+
+	FeedbackText = MakeText(WidgetTree, LastFeedback.IsEmpty() ? FText::FromString(TEXT("点击已解锁内容查看说明。")) : LastFeedback, 17, TTDUIStyle::MutedInk());
+	FeedbackPanel->AddChild(FeedbackText);
+}
+
+void UTTDResearchLabWidget::ShowEntryDetails(const FTTDCollectionEntry Entry)
+{
+	if (!DetailOverlay || !Entry.bUnlocked)
+	{
+		return;
+	}
+
+	DetailOverlay->ClearChildren();
+	DetailOverlay->SetVisibility(ESlateVisibility::Visible);
+
+	UBorder* CardPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(26.0f, 22.0f));
+	UVerticalBox* CardBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	CardPanel->AddChild(CardBox);
+
+	const FText TypeText = Entry.Category == ETTDCollectionCategory::Diagram
+		? FText::FromString(TEXT("图纸详情"))
+		: FText::FromString(TEXT("玩具盒详情"));
+	CardBox->AddChildToVerticalBox(MakeText(WidgetTree, TypeText, 17, TTDUIStyle::MutedInk(), ETextJustify::Center));
+
+	UVerticalBoxSlot* NameSlot = CardBox->AddChildToVerticalBox(MakeText(WidgetTree, Entry.DisplayName, 30, TTDUIStyle::Ink(), ETextJustify::Center));
+	NameSlot->SetPadding(FMargin(0.0f, 4.0f, 0.0f, 12.0f));
+
+	UVerticalBoxSlot* DescriptionSlot = CardBox->AddChildToVerticalBox(MakeText(WidgetTree, Entry.Description, 17, TTDUIStyle::MutedInk(), ETextJustify::Center));
+	DescriptionSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 16.0f));
+
+	AddPartScroller(CardBox, Entry);
+
+	FSimpleDelegate CloseDelegate;
+	CloseDelegate.BindUObject(this, &UTTDResearchLabWidget::HideEntryDetails);
+	UVerticalBoxSlot* CloseSlot = CardBox->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("关闭")), true, CloseDelegate, ETTDActionButtonVariant::Ghost));
+	CloseSlot->SetHorizontalAlignment(HAlign_Center);
+	CloseSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
+
+	DetailOverlay->AddChild(CardPanel);
+}
+
+void UTTDResearchLabWidget::HideEntryDetails()
+{
+	if (DetailOverlay)
+	{
+		DetailOverlay->ClearChildren();
+		DetailOverlay->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
+void UTTDResearchLabWidget::AddPartScroller(UVerticalBox* ParentBox, const FTTDCollectionEntry& Entry) const
+{
+	if (!ParentBox)
+	{
+		return;
+	}
+
+	const FText PartLabel = Entry.Category == ETTDCollectionCategory::Diagram
+		? FText::FromString(TEXT("组装零件"))
+		: FText::FromString(TEXT("可开出零件"));
+	UVerticalBoxSlot* LabelSlot = ParentBox->AddChildToVerticalBox(MakeText(WidgetTree, PartLabel, 17, TTDUIStyle::Ink()));
+	LabelSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 8.0f));
+
+	UScrollBox* PartScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	PartScroll->SetOrientation(Orient_Horizontal);
+	UHorizontalBox* PartRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	PartScroll->AddChild(PartRow);
+
+	if (Entry.PartIds.IsEmpty())
+	{
+		PartRow->AddChildToHorizontalBox(MakeText(WidgetTree, FText::FromString(TEXT("暂无")), 16, TTDUIStyle::MutedInk()));
+	}
+	else
+	{
+		for (const FName PartId : Entry.PartIds)
+		{
+			UBorder* PartChip = MakePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(14.0f, 10.0f));
+			PartChip->AddChild(MakeText(WidgetTree, TTDUIDisplayNames::PartName(GetGameInstance(), PartId), 16, TTDUIStyle::Ink(), ETextJustify::Center));
+			UHorizontalBoxSlot* ChipSlot = PartRow->AddChildToHorizontalBox(PartChip);
+			ChipSlot->SetPadding(FMargin(0.0f, 0.0f, 10.0f, 0.0f));
+		}
+	}
+
+	ParentBox->AddChildToVerticalBox(PartScroll);
 }
 
 void UTTDResearchLabWidget::RenderResearch()
 {
 	bShowingResearch = true;
-	ResearchRefreshAccumulator = 0.0f;
+	bShowingDiagramResearch = false;
 
 	if (!ContentBox)
 	{
+		UpdateResearchQueueRefreshTimer();
 		return;
 	}
 
 	ContentBox->ClearChildren();
 	QueueSlotButtons.Reset();
 
-	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Title->SetText(FText::FromString(TEXT("研究所 / 研发")));
-	UseDarkText(Title);
-	FSlateFontInfo TitleFont = Title->GetFont();
-	TitleFont.Size = 32;
-	Title->SetFont(TitleFont);
+	UTextBlock* Title = MakeText(WidgetTree, FText::FromString(TEXT("研究所 / 研发")), 32);
 	ContentBox->AddChildToVerticalBox(Title);
 
 	UHorizontalBox* ModeTabs = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ContentBox->AddChildToVerticalBox(ModeTabs);
+	UVerticalBoxSlot* ModeTabsSlot = ContentBox->AddChildToVerticalBox(ModeTabs);
+	ModeTabsSlot->SetPadding(FMargin(0.0f, 14.0f, 0.0f, 18.0f));
 
 	FSimpleDelegate ToyBoxModeDelegate;
 	ToyBoxModeDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderResearch);
-	ModeTabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("玩具盒")), true, ToyBoxModeDelegate));
+	ModeTabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("玩具盒")), true, ToyBoxModeDelegate, ETTDActionButtonVariant::Primary));
 
 	FSimpleDelegate DiagramModeDelegate;
-	DiagramModeDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderDiagramResearchPlaceholder);
+	DiagramModeDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderDiagramResearch);
 	UHorizontalBoxSlot* DiagramSlot = ModeTabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("图纸")), true, DiagramModeDelegate));
 	DiagramSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
 
@@ -256,23 +389,31 @@ void UTTDResearchLabWidget::RenderResearch()
 	if (!ResearchSubsystem)
 	{
 		LastFeedback = FText::FromString(TEXT("研究所系统未初始化。"));
+		ContentBox->AddChildToVerticalBox(MakeText(WidgetTree, LastFeedback, 18, TTDUIStyle::Danger()));
+		UpdateResearchQueueRefreshTimer();
 		return;
 	}
 
-	UHorizontalBox* QueueRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	UVerticalBoxSlot* QueueSlot = ContentBox->AddChildToVerticalBox(QueueRow);
-	QueueSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 16.0f));
+	UBorder* QueuePanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(18.0f));
+	UVerticalBoxSlot* QueuePanelSlot = ContentBox->AddChildToVerticalBox(QueuePanel);
+	QueuePanelSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 18.0f));
 
-	UTextBlock* QueueLabel = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	QueueLabel->SetText(FText::FromString(TEXT("制作队列")));
-	UseDarkText(QueueLabel);
-	QueueRow->AddChildToHorizontalBox(QueueLabel);
+	UVerticalBox* QueueBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	QueuePanel->AddChild(QueueBox);
+
+	UTextBlock* QueueLabel = MakeText(WidgetTree, FText::FromString(TEXT("制作队列")), 22, TTDUIStyle::Ink());
+	QueueBox->AddChildToVerticalBox(QueueLabel);
+
+	UHorizontalBox* QueueRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	UVerticalBoxSlot* QueueRowSlot = QueueBox->AddChildToVerticalBox(QueueRow);
+	QueueRowSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
 
 	const TArray<FTTDCraftQueueItem> QueueItems = ResearchSubsystem->GetCraftingQueue();
 	for (int32 SlotIndex = 0; SlotIndex < ResearchSubsystem->GetCraftingQueueMaxSlots(); ++SlotIndex)
 	{
 		FText SlotText = FText::FromString(TEXT("+"));
 		bool bSlotEnabled = false;
+		bool bCompleted = false;
 		FSimpleDelegate SlotDelegate;
 
 		if (QueueItems.IsValidIndex(SlotIndex))
@@ -280,26 +421,32 @@ void UTTDResearchLabWidget::RenderResearch()
 			const FTTDCraftQueueItem QueueItem = QueueItems[SlotIndex];
 			SlotText = BuildQueueSlotText(QueueItem);
 			bSlotEnabled = QueueItem.bCompleted;
+			bCompleted = QueueItem.bCompleted;
 			SlotDelegate.BindWeakLambda(this, [this, QueueItem]()
 			{
 				ClaimQueueItem(QueueItem.QueueId);
 			});
 		}
 
-		UTTDActionButtonWidget* QueueButton = MakeButton(WidgetTree, SlotText, bSlotEnabled, SlotDelegate);
+		UTTDActionButtonWidget* QueueButton = MakeButton(WidgetTree, SlotText, bSlotEnabled, SlotDelegate, ETTDActionButtonVariant::QueueSlot);
+		QueueButton->SetPulseActive(bCompleted);
 		QueueSlotButtons.Add(QueueButton);
 
 		UHorizontalBoxSlot* QueueButtonSlot = QueueRow->AddChildToHorizontalBox(QueueButton);
-		QueueButtonSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
+		QueueButtonSlot->SetPadding(FMargin(0.0f, 0.0f, 12.0f, 0.0f));
 	}
 
 	UHorizontalBox* BodyRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-	ContentBox->AddChildToVerticalBox(BodyRow);
+	UVerticalBoxSlot* BodySlot = ContentBox->AddChildToVerticalBox(BodyRow);
+	BodySlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-	UVerticalBox* PreviewBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-	UHorizontalBoxSlot* PreviewSlot = BodyRow->AddChildToHorizontalBox(PreviewBox);
+	UBorder* PreviewPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(20.0f));
+	UHorizontalBoxSlot* PreviewSlot = BodyRow->AddChildToHorizontalBox(PreviewPanel);
 	PreviewSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 	PreviewSlot->SetPadding(FMargin(0.0f, 0.0f, 16.0f, 0.0f));
+
+	UVerticalBox* PreviewBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	PreviewPanel->AddChild(PreviewBox);
 
 	const TArray<FTTDToyBoxDefinition> ToyBoxes = ResearchSubsystem->GetToyBoxes();
 	if (!ToyBoxes.ContainsByPredicate([this](const FTTDToyBoxDefinition& ToyBox) { return ToyBox.ToyBoxId == SelectedToyBoxId; }) && ToyBoxes.Num() > 0)
@@ -314,51 +461,47 @@ void UTTDResearchLabWidget::RenderResearch()
 
 	if (SelectedToyBox)
 	{
-		UTextBlock* SelectedName = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		SelectedName->SetText(SelectedToyBox->DisplayName);
-		UseDarkText(SelectedName);
-		FSlateFontInfo NameFont = SelectedName->GetFont();
-		NameFont.Size = 26;
-		SelectedName->SetFont(NameFont);
-		PreviewBox->AddChildToVerticalBox(SelectedName);
+		PreviewBox->AddChildToVerticalBox(MakeText(WidgetTree, SelectedToyBox->DisplayName, 28));
 
-		UTextBlock* Description = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		Description->SetAutoWrapText(true);
-		Description->SetText(SelectedToyBox->Description);
-		UseDarkText(Description);
+		UTextBlock* Description = MakeText(WidgetTree, SelectedToyBox->Description, 17, TTDUIStyle::MutedInk());
 		UVerticalBoxSlot* DescriptionSlot = PreviewBox->AddChildToVerticalBox(Description);
-		DescriptionSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 12.0f));
+		DescriptionSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 16.0f));
 
-		UTextBlock* PartsText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		PartsText->SetText(FText::Format(
-			FText::FromString(TEXT("可开出零件：{0}")),
-			PartIdsToText(SelectedToyBox->PossiblePartIds)));
-		UseDarkText(PartsText);
-		PreviewBox->AddChildToVerticalBox(PartsText);
+		PreviewBox->AddChildToVerticalBox(MakeText(
+			WidgetTree,
+			FText::Format(FText::FromString(TEXT("可开出零件：{0}")), PartIdsToText(GetGameInstance(), SelectedToyBox->PossiblePartIds)),
+			17,
+			TTDUIStyle::Ink()));
 
-		UTextBlock* DurationText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-		DurationText->SetText(FText::Format(
-			FText::FromString(TEXT("制作所需时间：{0}")),
-			FormatSeconds(SelectedToyBox->CraftDurationSeconds)));
-		UseDarkText(DurationText);
+		UTextBlock* DurationText = MakeText(
+			WidgetTree,
+			FText::Format(FText::FromString(TEXT("制作所需时间：{0}")), FormatSeconds(SelectedToyBox->CraftDurationSeconds)),
+			17,
+			TTDUIStyle::Ink());
 		UVerticalBoxSlot* DurationSlot = PreviewBox->AddChildToVerticalBox(DurationText);
-		DurationSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 12.0f));
+		DurationSlot->SetPadding(FMargin(0.0f, 10.0f, 0.0f, 18.0f));
 
 		FSimpleDelegate EnqueueDelegate;
 		EnqueueDelegate.BindUObject(this, &UTTDResearchLabWidget::EnqueueSelectedToyBox);
-		PreviewBox->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("加入制作队列")), true, EnqueueDelegate));
+		PreviewBox->AddChildToVerticalBox(MakeButton(WidgetTree, FText::FromString(TEXT("加入制作队列")), true, EnqueueDelegate, ETTDActionButtonVariant::Primary));
 	}
 
-	FeedbackText = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	FeedbackText->SetAutoWrapText(true);
-	FeedbackText->SetText(LastFeedback.IsEmpty() ? FText::FromString(TEXT("选择右侧玩具盒后可加入制作队列。")) : LastFeedback);
-	UseDarkText(FeedbackText);
-	UVerticalBoxSlot* FeedbackSlot = PreviewBox->AddChildToVerticalBox(FeedbackText);
-	FeedbackSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
+	UBorder* FeedbackPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(16.0f, 12.0f));
+	UVerticalBoxSlot* FeedbackPanelSlot = PreviewBox->AddChildToVerticalBox(FeedbackPanel);
+	FeedbackPanelSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
 
-	UScrollBox* ToyBoxList = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
-	UHorizontalBoxSlot* ListSlot = BodyRow->AddChildToHorizontalBox(ToyBoxList);
+	FeedbackText = MakeText(WidgetTree, LastFeedback.IsEmpty() ? FText::FromString(TEXT("选择右侧玩具盒后可加入制作队列。")) : LastFeedback, 17, TTDUIStyle::MutedInk());
+	FeedbackPanel->AddChild(FeedbackText);
+
+	UBorder* ListPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(14.0f));
+	UHorizontalBoxSlot* ListSlot = BodyRow->AddChildToHorizontalBox(ListPanel);
 	ListSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+
+	UScrollBox* ToyBoxScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	ListPanel->AddChild(ToyBoxScroll);
+
+	UVerticalBox* ToyBoxList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	ToyBoxScroll->AddChild(ToyBoxList);
 
 	for (const FTTDCollectionEntry& Entry : ResearchSubsystem->GetCollectionEntries(ETTDCollectionCategory::ToyBox))
 	{
@@ -369,8 +512,11 @@ void UTTDResearchLabWidget::RenderResearch()
 			? Entry.DisplayName
 			: FText::Format(FText::FromString(TEXT("{0}\n未解锁")), Entry.DisplayName);
 
-		ToyBoxList->AddChild(MakeButton(WidgetTree, Label, Entry.bUnlocked, SelectDelegate));
+		UVerticalBoxSlot* ItemSlot = ToyBoxList->AddChildToVerticalBox(MakeButton(WidgetTree, Label, Entry.bUnlocked, SelectDelegate));
+		ItemSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
 	}
+
+	UpdateResearchQueueRefreshTimer();
 }
 
 void UTTDResearchLabWidget::RefreshResearchQueueButtons()
@@ -392,15 +538,62 @@ void UTTDResearchLabWidget::RefreshResearchQueueButtons()
 
 		FText SlotText = FText::FromString(TEXT("+"));
 		bool bSlotEnabled = false;
+		bool bCompleted = false;
 
 		if (QueueItems.IsValidIndex(SlotIndex))
 		{
 			const FTTDCraftQueueItem QueueItem = QueueItems[SlotIndex];
 			SlotText = BuildQueueSlotText(QueueItem);
 			bSlotEnabled = QueueItem.bCompleted;
+			bCompleted = QueueItem.bCompleted;
 		}
 
 		QueueButton->SetLabelAndEnabled(SlotText, bSlotEnabled);
+		QueueButton->SetPulseActive(bCompleted);
+	}
+}
+
+void UTTDResearchLabWidget::UpdateResearchQueueRefreshTimer()
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	FTimerManager& TimerManager = World->GetTimerManager();
+	bool bHasActiveQueueItem = false;
+	if (const UTTDResearchSubsystem* ResearchSubsystem = GetResearchSubsystem())
+	{
+		for (const FTTDCraftQueueItem& QueueItem : ResearchSubsystem->GetCraftingQueue())
+		{
+			if (!QueueItem.bCompleted)
+			{
+				bHasActiveQueueItem = true;
+				break;
+			}
+		}
+	}
+
+	const bool bShouldRefreshQueue = bShowingResearch
+		&& !bShowingDiagramResearch
+		&& QueueSlotButtons.Num() > 0
+		&& bHasActiveQueueItem;
+	if (bShouldRefreshQueue)
+	{
+		if (!TimerManager.IsTimerActive(ResearchQueueRefreshTimerHandle))
+		{
+			TimerManager.SetTimer(
+				ResearchQueueRefreshTimerHandle,
+				this,
+				&UTTDResearchLabWidget::RefreshResearchQueueButtons,
+				1.0f,
+				true);
+		}
+	}
+	else
+	{
+		TimerManager.ClearTimer(ResearchQueueRefreshTimerHandle);
 	}
 }
 
@@ -413,10 +606,11 @@ FText UTTDResearchLabWidget::BuildQueueSlotText(const FTTDCraftQueueItem& QueueI
 		QueueItem.bCompleted ? TEXT("\n完成") : TEXT("")));
 }
 
-void UTTDResearchLabWidget::RenderDiagramResearchPlaceholder()
+void UTTDResearchLabWidget::RenderDiagramResearch()
 {
-	bShowingResearch = false;
-	LastFeedback = FText::FromString(TEXT("图纸研发页签已预留：后续可接入图纸合成、零件消耗与解锁规则。"));
+	bShowingResearch = true;
+	bShowingDiagramResearch = true;
+	UpdateResearchQueueRefreshTimer();
 
 	if (!ContentBox)
 	{
@@ -424,21 +618,104 @@ void UTTDResearchLabWidget::RenderDiagramResearchPlaceholder()
 	}
 
 	ContentBox->ClearChildren();
+	QueueSlotButtons.Reset();
 
-	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Title->SetText(FText::FromString(TEXT("研究所 / 图纸研发")));
-	UseDarkText(Title);
-	FSlateFontInfo TitleFont = Title->GetFont();
-	TitleFont.Size = 32;
-	Title->SetFont(TitleFont);
-	ContentBox->AddChildToVerticalBox(Title);
+	ContentBox->AddChildToVerticalBox(MakeText(WidgetTree, FText::FromString(TEXT("研究所 / 图纸研发")), 32));
 
-	UTextBlock* Description = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Description->SetAutoWrapText(true);
-	Description->SetText(LastFeedback);
-	UseDarkText(Description);
-	UVerticalBoxSlot* DescriptionSlot = ContentBox->AddChildToVerticalBox(Description);
-	DescriptionSlot->SetPadding(FMargin(0.0f, 24.0f, 0.0f, 0.0f));
+	UHorizontalBox* ModeTabs = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	UVerticalBoxSlot* ModeTabsSlot = ContentBox->AddChildToVerticalBox(ModeTabs);
+	ModeTabsSlot->SetPadding(FMargin(0.0f, 14.0f, 0.0f, 18.0f));
+
+	FSimpleDelegate ToyBoxModeDelegate;
+	ToyBoxModeDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderResearch);
+	ModeTabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("玩具盒")), true, ToyBoxModeDelegate));
+
+	FSimpleDelegate DiagramModeDelegate;
+	DiagramModeDelegate.BindUObject(this, &UTTDResearchLabWidget::RenderDiagramResearch);
+	UHorizontalBoxSlot* DiagramSlot = ModeTabs->AddChildToHorizontalBox(MakeButton(WidgetTree, FText::FromString(TEXT("图纸")), true, DiagramModeDelegate, ETTDActionButtonVariant::Primary));
+	DiagramSlot->SetPadding(FMargin(12.0f, 0.0f, 0.0f, 0.0f));
+
+	UTTDResearchSubsystem* ResearchSubsystem = GetResearchSubsystem();
+	if (!ResearchSubsystem)
+	{
+		LastFeedback = FText::FromString(TEXT("研究所系统未初始化。"));
+		ContentBox->AddChildToVerticalBox(MakeText(WidgetTree, LastFeedback, 18, TTDUIStyle::Danger()));
+		return;
+	}
+
+	const TArray<FTTDDiagramDefinition> Diagrams = ResearchSubsystem->GetDiagrams();
+	if (!Diagrams.ContainsByPredicate([this](const FTTDDiagramDefinition& Diagram) { return Diagram.DiagramId == SelectedDiagramId; }) && Diagrams.Num() > 0)
+	{
+		SelectedDiagramId = Diagrams[0].DiagramId;
+	}
+
+	UHorizontalBox* BodyRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+	UVerticalBoxSlot* BodySlot = ContentBox->AddChildToVerticalBox(BodyRow);
+	BodySlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+
+	UBorder* PreviewPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(20.0f));
+	UHorizontalBoxSlot* PreviewSlot = BodyRow->AddChildToHorizontalBox(PreviewPanel);
+	PreviewSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+	PreviewSlot->SetPadding(FMargin(0.0f, 0.0f, 16.0f, 0.0f));
+
+	UVerticalBox* PreviewBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	PreviewPanel->AddChild(PreviewBox);
+
+	const FTTDDiagramDefinition* SelectedDiagram = Diagrams.FindByPredicate([this](const FTTDDiagramDefinition& Diagram)
+	{
+		return Diagram.DiagramId == SelectedDiagramId;
+	});
+
+	if (SelectedDiagram)
+	{
+		PreviewBox->AddChildToVerticalBox(MakeText(WidgetTree, SelectedDiagram->DisplayName, 28));
+
+		UTextBlock* Description = MakeText(WidgetTree, SelectedDiagram->Description, 17, TTDUIStyle::MutedInk());
+		UVerticalBoxSlot* DescriptionSlot = PreviewBox->AddChildToVerticalBox(Description);
+		DescriptionSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 16.0f));
+
+		PreviewBox->AddChildToVerticalBox(MakeText(WidgetTree, BuildDiagramCostText(*SelectedDiagram, *ResearchSubsystem), 17, TTDUIStyle::Ink()));
+
+		FText FailureReason;
+		const bool bCanResearch = ResearchSubsystem->CanResearchDiagram(SelectedDiagram->DiagramId, FailureReason);
+		const FText ButtonLabel = bCanResearch
+			? FText::FromString(TEXT("研发图纸"))
+			: (FailureReason.IsEmpty() ? FText::FromString(TEXT("不可研发")) : FailureReason);
+
+		FSimpleDelegate ResearchDelegate;
+		ResearchDelegate.BindUObject(this, &UTTDResearchLabWidget::ResearchSelectedDiagram);
+		UVerticalBoxSlot* ButtonSlot = PreviewBox->AddChildToVerticalBox(MakeButton(WidgetTree, ButtonLabel, bCanResearch, ResearchDelegate, ETTDActionButtonVariant::Primary));
+		ButtonSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
+	}
+
+	UBorder* FeedbackPanel = MakePanel(WidgetTree, TTDUIStyle::Paper(), FMargin(16.0f, 12.0f));
+	UVerticalBoxSlot* FeedbackPanelSlot = PreviewBox->AddChildToVerticalBox(FeedbackPanel);
+	FeedbackPanelSlot->SetPadding(FMargin(0.0f, 18.0f, 0.0f, 0.0f));
+	FeedbackText = MakeText(WidgetTree, LastFeedback.IsEmpty() ? FText::FromString(TEXT("选择右侧图纸查看研发消耗。")) : LastFeedback, 17, TTDUIStyle::MutedInk());
+	FeedbackPanel->AddChild(FeedbackText);
+
+	UBorder* ListPanel = MakePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(14.0f));
+	UHorizontalBoxSlot* ListSlot = BodyRow->AddChildToHorizontalBox(ListPanel);
+	ListSlot->SetSize(FSlateChildSize(ESlateSizeRule::Automatic));
+
+	UScrollBox* DiagramScroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+	ListPanel->AddChild(DiagramScroll);
+
+	UVerticalBox* DiagramList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	DiagramScroll->AddChild(DiagramList);
+
+	for (const FTTDCollectionEntry& Entry : ResearchSubsystem->GetCollectionEntries(ETTDCollectionCategory::Diagram))
+	{
+		FSimpleDelegate SelectDelegate;
+		SelectDelegate.BindUObject(this, &UTTDResearchLabWidget::SetSelectedDiagram, Entry.ItemId);
+
+		const FText Label = Entry.bUnlocked
+			? FText::Format(FText::FromString(TEXT("{0}\n已解锁")), Entry.DisplayName)
+			: Entry.DisplayName;
+
+		UVerticalBoxSlot* ItemSlot = DiagramList->AddChildToVerticalBox(MakeButton(WidgetTree, Label, true, SelectDelegate, Entry.ItemId == SelectedDiagramId ? ETTDActionButtonVariant::Primary : ETTDActionButtonVariant::Secondary));
+		ItemSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
+	}
 }
 
 void UTTDResearchLabWidget::SetCollectionCategory(const ETTDCollectionCategory Category)
@@ -453,6 +730,13 @@ void UTTDResearchLabWidget::SetSelectedToyBox(const FName ToyBoxId)
 	SelectedToyBoxId = ToyBoxId;
 	LastFeedback = FText::GetEmpty();
 	RenderResearch();
+}
+
+void UTTDResearchLabWidget::SetSelectedDiagram(const FName DiagramId)
+{
+	SelectedDiagramId = DiagramId;
+	LastFeedback = FText::GetEmpty();
+	RenderDiagramResearch();
 }
 
 void UTTDResearchLabWidget::EnqueueSelectedToyBox()
@@ -489,12 +773,26 @@ void UTTDResearchLabWidget::ClaimQueueItem(const FGuid QueueId)
 		if (bClaimed)
 		{
 			LastFeedback = NewParts.Num() > 0
-				? FText::Format(FText::FromString(TEXT("制作完成，新增 {0} 个零件。")), FText::AsNumber(NewParts.Num()))
-				: FText::FromString(TEXT("制作完成，获得的零件均已解锁。"));
+				? FText::Format(FText::FromString(TEXT("制作完成，发现 {0} 个新零件，库存已增加。")), FText::AsNumber(NewParts.Num()))
+				: FText::FromString(TEXT("制作完成，库存已增加。"));
 		}
 	}
 
 	RenderResearch();
+}
+
+void UTTDResearchLabWidget::ResearchSelectedDiagram()
+{
+	if (UTTDResearchSubsystem* ResearchSubsystem = GetResearchSubsystem())
+	{
+		FText FailureReason;
+		const bool bResearched = ResearchSubsystem->ResearchDiagram(SelectedDiagramId, FailureReason);
+		LastFeedback = bResearched
+			? FText::FromString(TEXT("图纸研发完成。"))
+			: FailureReason;
+	}
+
+	RenderDiagramResearch();
 }
 
 FText UTTDResearchLabWidget::DescribeEntry(const FTTDCollectionEntry& Entry) const
@@ -513,7 +811,7 @@ FText UTTDResearchLabWidget::DescribeEntry(const FTTDCollectionEntry& Entry) con
 		Entry.DisplayName,
 		Entry.Description,
 		PartLabel,
-		PartIdsToText(Entry.PartIds));
+		PartIdsToText(GetGameInstance(), Entry.PartIds));
 }
 
 FText UTTDResearchLabWidget::FormatSeconds(const float Seconds) const
@@ -523,4 +821,42 @@ FText UTTDResearchLabWidget::FormatSeconds(const float Seconds) const
 	const int32 Minutes = (TotalSeconds % 3600) / 60;
 	const int32 RemainingSeconds = TotalSeconds % 60;
 	return FText::FromString(FString::Printf(TEXT("%02d:%02d:%02d"), Hours, Minutes, RemainingSeconds));
+}
+
+FText UTTDResearchLabWidget::BuildDiagramCostText(const FTTDDiagramDefinition& Diagram, const UTTDResearchSubsystem& ResearchSubsystem) const
+{
+	TArray<FTTDNameStack> Costs = Diagram.PartCosts;
+	if (Costs.IsEmpty())
+	{
+		for (const FName PartId : Diagram.RequiredPartIds)
+		{
+			if (!PartId.IsNone())
+			{
+				Costs.Add(FTTDNameStack(PartId, 1));
+			}
+		}
+	}
+
+	Costs.Sort(
+		[](const FTTDNameStack& Left, const FTTDNameStack& Right)
+		{
+			return Left.Id.LexicalLess(Right.Id);
+		});
+
+	TArray<FString> Lines;
+	for (const FTTDNameStack& Cost : Costs)
+	{
+		if (!Cost.Id.IsNone() && Cost.Count > 0)
+		{
+			Lines.Add(FString::Printf(
+				TEXT("%s：%d/%d"),
+				*TTDUIDisplayNames::PartName(GetGameInstance(), Cost.Id).ToString(),
+				ResearchSubsystem.GetPartCount(Cost.Id),
+				Cost.Count));
+		}
+	}
+
+	return Lines.IsEmpty()
+		? FText::FromString(TEXT("研发消耗：无"))
+		: FText::FromString(FString::Printf(TEXT("研发消耗：\n%s"), *FString::Join(Lines, TEXT("\n"))));
 }

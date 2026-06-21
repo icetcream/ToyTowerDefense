@@ -7,6 +7,7 @@
 #include "TTDBattleWorldSubsystem.generated.h"
 
 class ATTDBattleBuildingActor;
+class ATTDBattleBackgroundActor;
 class ATTDBattleCastleActor;
 class ATTDBattleEnemyActor;
 class ATTDBattleProjectileActor;
@@ -30,6 +31,24 @@ struct FTTDBattlePendingSpawn
 
 	UPROPERTY(Transient)
 	float ProgressWeight = 0.0f;
+};
+
+USTRUCT()
+struct FTTDBattleWaveRuntime
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Transient)
+	FName WaveId;
+
+	UPROPERTY(Transient)
+	float BufferStartSeconds = 0.0f;
+
+	UPROPERTY(Transient)
+	float WaveStartSeconds = 0.0f;
+
+	UPROPERTY(Transient)
+	float WaveEndSeconds = 0.0f;
 };
 
 UCLASS(BlueprintType)
@@ -58,12 +77,19 @@ public:
 	bool StartBattle(FName LevelId);
 
 	bool StartBattle(FName LevelId, FText& OutFailureReason);
+	bool StartBattle(FName LevelId, const FTTDBattleLoadout& Loadout, FText& OutFailureReason);
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle", meta = (DisplayName = "Start Battle With Reason"))
 	bool StartBattleWithReason(FName LevelId, FText& OutFailureReason);
 
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle", meta = (DisplayName = "Start Battle With Loadout"))
+	bool StartBattleWithLoadout(FName LevelId, FTTDBattleLoadout Loadout, FText& OutFailureReason);
+
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	void EndBattle(ETTDBattleState FinalState);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	void ClearEndedBattle();
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	bool TryBuildOnSlot(FName BuildingId, ATTDBuildSlotActor* Slot, FText& OutFailureReason);
@@ -74,11 +100,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	bool OpenToyBox(FName ToyBoxId, TArray<FTTDNameStack>& OutRewards, FText& OutFailureReason);
 
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle|Debug")
+	bool ApplyTestCheatSupplies(FText& OutSummary);
+
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	ETTDBattleState GetBattleState() const { return BattleState; }
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	bool IsBattleRunning() const { return BattleState == ETTDBattleState::Running; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	ETTDBattlePhase GetBattlePhase() const { return BattlePhase; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	FName GetActiveLevelId() const { return ActiveLevelId; }
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	float GetProgress() const;
@@ -102,6 +137,12 @@ public:
 	TArray<FTTDBuildingDefinition> GetBuildingDefinitions() const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	TArray<FTTDBuildingDefinition> GetAvailableBuildingDefinitions() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	bool IsBuildingAvailable(FName BuildingId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	TArray<FTTDToyBoxRewardDefinition> GetToyBoxDefinitions() const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
@@ -119,10 +160,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	int32 GetBattleInstanceId() const { return BattleInstanceId; }
 
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetCurrentWaveNumber() const { return CurrentWaveIndex >= 0 ? CurrentWaveIndex + 1 : 0; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetTotalWaveCount() const { return WaveRuntimes.Num(); }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	float GetWaveRemainingSeconds() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	float GetPhaseRemainingSeconds() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	bool IsPostBattleReturnReady() const { return bPostBattleReturnReady; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	TArray<FTTDBattleLevelDefinition> GetBattleLevelDefinitions() const;
+
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	void SetRewardRandomSeed(int32 Seed);
 
 	void HandleCastleDestroyed(ATTDBattleCastleActor* DestroyedCastle);
+	void HandleCastleDamaged(ATTDBattleCastleActor* DamagedCastle);
 	void HandleBuildingDestroyed(ATTDBattleBuildingActor* DestroyedBuilding);
 	void HandleEnemyKilled(ATTDBattleEnemyActor* Enemy);
 	void RegisterProjectile(ATTDBattleProjectileActor* Projectile, int32 InBattleInstanceId);
@@ -164,6 +224,9 @@ private:
 	TObjectPtr<ATTDBattleCastleActor> CastleActor;
 
 	UPROPERTY(Transient)
+	TObjectPtr<ATTDBattleBackgroundActor> ActiveBackgroundActor;
+
+	UPROPERTY(Transient)
 	TArray<TObjectPtr<ATTDBattleEnemyActor>> ActiveEnemies;
 
 	UPROPERTY(Transient)
@@ -179,6 +242,9 @@ private:
 	TArray<FTTDBattlePendingSpawn> PendingSpawns;
 
 	UPROPERTY(Transient)
+	TArray<FTTDBattleWaveRuntime> WaveRuntimes;
+
+	UPROPERTY(Transient)
 	TSet<FName> DiagramIds;
 
 	UPROPERTY(Transient)
@@ -189,24 +255,31 @@ private:
 
 	FName ActiveLevelId;
 	ETTDBattleState BattleState = ETTDBattleState::Inactive;
+	ETTDBattlePhase BattlePhase = ETTDBattlePhase::None;
 	FRandomStream RewardRandomStream;
 	float BattleElapsedSeconds = 0.0f;
 	float TotalEnemyWeight = 0.0f;
 	float RemainingUnspawnedWeight = 0.0f;
 	float AliveEnemyWeight = 0.0f;
 	float FrozenProgress = 0.0f;
+	float VictoryReturnDelaySeconds = 5.0f;
+	float VictoryReturnReadySeconds = 0.0f;
 	int32 Currency = 0;
 	int32 BattleInstanceId = 0;
+	int32 CurrentWaveIndex = INDEX_NONE;
 	bool bBroadcastedInitialState = false;
 	bool bUseFrozenProgress = false;
+	bool bPostBattleReturnReady = false;
 
 	void LoadDefinitionsFromSettings();
 	void GatherPlacedActors();
 	void CleanupBattle();
+	bool StartBattleInternal(FName LevelId, const FTTDBattleLoadout* Loadout, FText& OutFailureReason);
 	bool ValidateBattleStart(FName LevelId, FText& OutFailureReason) const;
 	bool ValidateLevelDefinition(FName LevelId, const FTTDBattleLevelDefinition& LevelDefinition, FText& OutFailureReason) const;
 	bool ValidateEnemyDefinition(FName EnemyId, FText& OutFailureReason) const;
 	bool ValidateProjectileBuildingDefinitions(FText& OutFailureReason) const;
+	void NormalizeLoadedToyBoxDefinitions();
 	bool HasSpawnPointForGroup(FName SpawnGroup) const;
 	bool IsPoolableActorClass(const UClass* ActorClass, const UClass* RequiredBaseClass) const;
 	UClass* ResolveEnemyClass(const FTTDEnemyDefinition& EnemyDefinition) const;
@@ -215,11 +288,14 @@ private:
 	void ReleaseActiveBuildings();
 	void ReleaseActiveProjectiles();
 	void ReleaseBattleActor(AActor* Actor) const;
+	bool SpawnBackgroundForLevel(const FTTDBattleLevelDefinition& LevelDefinition);
 	bool SpawnCastleForLevel(const FTTDBattleLevelDefinition& LevelDefinition);
 	void BuildSpawnQueueForLevel(const FTTDBattleLevelDefinition& LevelDefinition);
 	void SpawnDueEnemies();
 	bool SpawnEnemy(const FTTDBattlePendingSpawn& PendingSpawn, FText& OutFailureReason);
 	ATTDBattleSpawnPointActor* PickSpawnPoint(FName SpawnGroup) const;
+	void UpdateBattlePhase();
+	void SetBattlePhase(ETTDBattlePhase NewPhase, int32 NewWaveIndex);
 	void CheckVictoryCondition();
 	void RegisterBattleTarget(UObject* Target);
 	void UnregisterBattleTarget(UObject* Target);
@@ -231,6 +307,8 @@ private:
 	void BroadcastProgressChanged() const;
 	void BroadcastCurrencyChanged() const;
 	void BroadcastInventoryChanged() const;
+	void BroadcastCastleHealthChanged() const;
 	void BroadcastBuildingPlaced(FName BuildingId, FName SlotId) const;
 	void BroadcastBattleEnded(ETTDBattleState FinalState) const;
+	void BroadcastPhaseChanged() const;
 };

@@ -11,10 +11,13 @@ TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Research_Queu
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Research_Queue_Enqueued);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Research_Queue_Claimed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Research_Collection_Changed);
+TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Research_Inventory_Changed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_State_Changed);
+TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_Phase_Changed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_Progress_Changed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_Currency_Changed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_Inventory_Changed);
+TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_CastleHealth_Changed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_Building_Placed);
 TOYTOWERDEFENSE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(TAG_TTD_Message_Battle_Ended);
 
@@ -49,6 +52,12 @@ struct FTTDToyBoxClaimedMessage
 
 	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
 	TArray<FTTDPartDefinition> NewlyUnlockedParts;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	TArray<FTTDNameStack> GrantedParts;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	TArray<FTTDNameStack> PartInventory;
 };
 
 USTRUCT(BlueprintType)
@@ -67,6 +76,15 @@ struct FTTDResearchCollectionChangedMessage
 };
 
 USTRUCT(BlueprintType)
+struct FTTDResearchInventoryChangedMessage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	TArray<FTTDNameStack> PartInventory;
+};
+
+USTRUCT(BlueprintType)
 struct FTTDBattleStateChangedMessage
 {
 	GENERATED_BODY()
@@ -76,6 +94,27 @@ struct FTTDBattleStateChangedMessage
 
 	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
 	ETTDBattleState State = ETTDBattleState::Inactive;
+};
+
+USTRUCT(BlueprintType)
+struct FTTDBattlePhaseChangedMessage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	FName LevelId;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	ETTDBattlePhase Phase = ETTDBattlePhase::None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	int32 CurrentWaveNumber = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	int32 TotalWaveCount = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	float RemainingSeconds = 0.0f;
 };
 
 USTRUCT(BlueprintType)
@@ -115,6 +154,18 @@ struct FTTDBattleInventoryChangedMessage
 
 	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
 	TArray<FTTDNameStack> Parts;
+};
+
+USTRUCT(BlueprintType)
+struct FTTDBattleCastleHealthChangedMessage
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	float CurrentHealth = 0.0f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	float MaxHealth = 0.0f;
 };
 
 USTRUCT(BlueprintType)

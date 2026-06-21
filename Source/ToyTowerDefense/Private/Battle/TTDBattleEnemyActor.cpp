@@ -58,6 +58,7 @@ void ATTDBattleEnemyActor::InitializeEnemy(const FTTDEnemyDefinition& Definition
 	AttackInterval = FMath::Max(0.01f, Definition.AttackInterval);
 	ProgressWeight = FMath::Max(0.0f, Definition.ProgressWeight);
 	CurrencyDrop = FMath::Max(0, Definition.CurrencyDrop);
+	CurrencyDropChance = FMath::Clamp(Definition.CurrencyDropChance, 0.0f, 1.0f);
 	AttackAccumulator = 0.0f;
 	ApplyVisualMaterial();
 }

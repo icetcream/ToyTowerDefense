@@ -4,6 +4,26 @@
 #include "Engine/DataTable.h"
 #include "TTDTypes.generated.h"
 
+USTRUCT(BlueprintType)
+struct FTTDNameStack
+{
+	GENERATED_BODY()
+
+	FTTDNameStack() = default;
+
+	FTTDNameStack(const FName InId, const int32 InCount)
+		: Id(InId)
+		, Count(InCount)
+	{
+	}
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Toy Tower Defense")
+	FName Id;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Toy Tower Defense", meta = (ClampMin = "0"))
+	int32 Count = 0;
+};
+
 UENUM(BlueprintType)
 enum class ETTDCollectionCategory : uint8
 {
@@ -61,6 +81,9 @@ struct FTTDDiagramDefinition : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense")
 	TArray<FName> RequiredPartIds;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense")
+	TArray<FTTDNameStack> PartCosts;
 };
 
 USTRUCT(BlueprintType)

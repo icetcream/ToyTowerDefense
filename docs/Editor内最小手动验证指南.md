@@ -365,8 +365,8 @@ DataTable：`DT_BattleToyBoxRewards_Manual`
 
 | 字段 | 值 |
 | --- | --- |
-| RowName | `BasicBox` |
-| ToyBoxId | `BasicBox` |
+| RowName | `BasicToyBox` |
+| ToyBoxId | `BasicToyBox` |
 | PurchaseCost | `5` |
 | RollCount | `2` |
 
@@ -378,7 +378,7 @@ DataTable：`DT_BattleToyBoxRewards_Manual`
 
 验证点：
 
-- 花费 5 货币购买 `BasicBox`。
+- 花费 5 货币购买 `BasicToyBox`。
 - 开启后固定得到 `Gear x2`。
 
 ### 4.6 Levels
@@ -414,14 +414,14 @@ DataTable：`DT_BattleLevels_Manual`
 
 | Id | Count |
 | --- | --- |
-| `BasicBox` | `1` |
+| `BasicToyBox` | `1` |
 
 验证点：
 
 - 进入战斗后 HUD 显示货币 10。
 - 初始拥有 `BasicTower` 图纸权限。
 - 初始零件足够建造两个塔。
-- 初始拥有一个 `BasicBox`。
+- 初始拥有一个 `BasicToyBox`。
 
 ## 5. 配置 DeveloperSettings
 
@@ -624,10 +624,10 @@ Play 当前地图。
 
 操作：
 
-1. 点击 `Buy BasicBox`。
+1. 点击 `Buy BasicToyBox`。
 2. 观察 `Currency` 从 10 变为 5。
-3. `Toy Boxes` 中 `BasicBox` 数量增加。
-4. 点击 `Open BasicBox`。
+3. `Toy Boxes` 中 `BasicToyBox` 数量增加。
+4. 点击 `Open BasicToyBox`。
 
 预期：
 

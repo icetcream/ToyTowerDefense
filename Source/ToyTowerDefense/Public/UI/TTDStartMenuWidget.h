@@ -11,7 +11,11 @@ class TOYTOWERDEFENSE_API UTTDStartMenuWidget : public UUserWidget
 
 protected:
 	virtual void NativeOnInitialized() override;
+	virtual void NativeConstruct() override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 private:
+	float EntranceElapsed = 0.0f;
+
 	void HandleStartClicked();
 };

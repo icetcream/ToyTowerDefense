@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>玩具塔防 - 战前 UI 原型</title>
+  <style>
+    :root {
+      --ink: #30261d;
+      --muted: #716453;
+      --paper: #fff3d4;
+      --paper2: #fff9e9;
+      --wood: #b8753d;
+      --wood-dark: #70401f;
+      --line: rgba(48, 38, 29, .2);
+      --blue: #2f8fc7;
+      --green: #62a85f;
+      --orange: #e39a36;
+      --shadow: 0 18px 42px rgba(59, 32, 12, .24);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      color: var(--ink);
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      background: linear-gradient(135deg, #f9d899, #d69755 52%, #a75d2f);
+    }
+
+    button {
+      border: 0;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .app {
+      width: 100%;
+      height: 100%;
+      padding: 18px;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      gap: 14px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border: 3px solid rgba(91, 53, 25, .42);
+      border-radius: 14px;
+      background: rgba(255, 246, 220, .88);
+      box-shadow: var(--shadow);
+    }
+
+    .nav, .resource, .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .back {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: var(--wood-dark);
+      color: #fff4d8;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .title {
+      font-size: 22px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .chapter, .resource {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #ffe8aa;
+      border: 2px solid rgba(91, 53, 25, .24);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .resource {
+      border-radius: 12px;
+      background: var(--paper2);
+    }
+
+    .box-icon {
+      width: 28px;
+      height: 22px;
+      border-radius: 5px;
+      background: linear-gradient(135deg, #e8b44d, #9d5b2d);
+      border: 2px solid #64391d;
+      position: relative;
+    }
+
+    .box-icon::before {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: -8px;
+      width: 14px;
+      height: 8px;
+      border: 2px solid #64391d;
+      border-bottom: 0;
+      border-radius: 5px 5px 0 0;
+      background: #f0c263;
+    }
+
+    .main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(520px, 1.55fr) minmax(390px, .95fr);
+      gap: 16px;
+    }
+
+    .map {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      border-radius: 20px;
+      border: 5px solid var(--wood-dark);
+      background:
+        radial-gradient(circle at 20% 28%, rgba(98, 168, 95, .42) 0 7%, transparent 7.4%),
+        radial-gradient(circle at 68% 32%, rgba(47, 143, 199, .34) 0 8%, transparent 8.4%),
+        radial-gradient(circle at 46% 76%, rgba(227, 154, 54, .34) 0 9%, transparent 9.4%),
+        repeating-linear-gradient(0deg, rgba(96, 51, 21, .1) 0 2px, transparent 2px 72px),
+        linear-gradient(90deg, #d99555, #cf8142);
+      box-shadow: var(--shadow);
+    }
+
+    .map-label, .toy {
+      position: absolute;
+      border: 2px solid rgba(91, 53, 25, .26);
+      border-radius: 12px;
+      background: rgba(255, 249, 232, .78);
+      font-weight: 900;
+    }
+
+    .map-label {
+      left: 22px;
+      top: 18px;
+      padding: 10px 14px;
+    }
+
+    .toy {
+      display: grid;
+      place-items: center;
+      color: rgba(48, 38, 29, .58);
+      pointer-events: none;
+    }
+
+    .path {
+      position: absolute;
+      inset: 18% 12% 18% 12%;
+      border: 8px dashed rgba(255, 239, 199, .62);
+      border-left-color: transparent;
+      border-bottom-color: transparent;
+      border-radius: 48%;
+      transform: rotate(-7deg);
+    }
+
+    .node {
+      position: absolute;
+      width: 74px;
+      height: 58px;
+      transform: translate(-50%, -50%);
+      border-radius: 16px;
+      border: 4px solid #6b3e20;
+      background: #fff1bf;
+      box-shadow: 0 10px 20px rgba(58, 29, 10, .28);
+      font-weight: 900;
+    }
+
+    .node.active {
+      background: #84cfff;
+      border-color: #184f77;
+      outline: 5px solid rgba(255, 255, 255, .56);
+    }
+
+    .node.locked {
+      opacity: .45;
+      filter: grayscale(.8);
+    }
+
+    .panel {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      overflow: hidden;
+      border-radius: 20px;
+      border: 5px solid var(--wood-dark);
+      background: rgba(255, 246, 220, .95);
+      box-shadow: var(--shadow);
+    }
+
+    .panel-head {
+      padding: 16px 18px 12px;
+      border-bottom: 2px solid var(--line);
+      background: linear-gradient(180deg, #fff2c9, #f3d99d);
+    }
+
+    .kicker {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .stage-title {
+      margin-top: 4px;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .stage-title h1 {
+      margin: 0;
+      font-size: 28px;
+      line-height: 1.1;
+    }
+
+    .badge {
+      padding: 5px 10px;
+      border-radius: 999px;
+      color: #fff;
+      background: var(--blue);
+      font-size: 13px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
+    .panel-body {
+      min-height: 0;
+      padding: 16px 18px;
+      overflow: auto;
+    }
+
+    .panel-foot {
+      padding: 14px 18px 16px;
+      border-top: 2px solid var(--line);
+      background: #f7dfac;
+      display: grid;
+      gap: 10px;
+    }
+
+    .section { margin-bottom: 16px; }
+
+    .section-title {
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 15px;
+      font-weight: 900;
+    }
+
+    .subsection { margin-bottom: 12px; }
+    .subsection-title {
+      margin: 0 0 7px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .tab {
+      min-height: 42px;
+      border: 2px solid rgba(91, 53, 25, .18);
+      border-radius: 0;
+      background: #c7c1b8;
+      color: #6d6255;
+      font-size: 17px;
+      font-weight: 900;
+      text-align: left;
+      padding: 0 12px;
+    }
+
+    .tab.active {
+      background: var(--paper2);
+      color: var(--ink);
+      border-color: rgba(91, 53, 25, .34);
+    }
+
+    .preview {
+      height: 130px;
+      border: 3px solid rgba(94, 53, 26, .22);
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: repeating-linear-gradient(90deg, #db9958 0 42px, #d58f4b 42px 84px);
+      color: rgba(74, 43, 22, .68);
+      font-size: 36px;
+      font-weight: 900;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .info-card, .plain-box, .requirement {
+      border: 2px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper2);
+      padding: 10px;
+    }
+
+    .info-card {
+      min-height: 64px;
+    }
+
+    .info-card strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .primary {
+      min-height: 50px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #42b6e8, #237dbb);
+      color: #fff;
+      font-size: 20px;
+      font-weight: 900;
+      box-shadow: inset 0 -4px 0 rgba(0, 0, 0, .16);
+    }
+
+    .primary:disabled {
+      cursor: default;
+      filter: grayscale(.8);
+      opacity: .55;
+    }
+
+    .ghost {
+      min-height: 36px;
+      padding: 0 12px;
+      border: 2px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper2);
+      font-weight: 900;
+    }
+
+    .row { justify-content: space-between; }
+
+    .slots {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+
+    .slots.box-slots { grid-template-columns: repeat(3, 1fr); }
+
+    .slot {
+      min-height: 56px;
+      border: 2px dashed rgba(91, 53, 25, .32);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .36);
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .slot.filled {
+      border-style: solid;
+      background: #ddf0ff;
+      color: #184f77;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .card {
+      position: relative;
+      min-height: 74px;
+      padding: 8px;
+      border: 2px solid rgba(91, 53, 25, .24);
+      border-radius: 12px;
+      background: var(--paper2);
+      display: grid;
+      gap: 4px;
+      justify-items: start;
+      text-align: left;
+      box-shadow: inset 0 -3px 0 rgba(73, 40, 18, .08);
+    }
+
+    .card.selected {
+      background: #dff1ff;
+      border-color: #237dbb;
+    }
+
+    .card.empty {
+      opacity: .46;
+      cursor: default;
+      filter: grayscale(.8);
+    }
+
+    .card span:first-child {
+      width: 34px;
+      height: 28px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      background: var(--orange);
+      font-weight: 900;
+    }
+
+    .card.blueprint span:first-child { background: var(--blue); }
+    .card.box-card span:first-child { background: var(--green); }
+
+    .card small, .requirement {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .stock {
+      position: absolute;
+      right: 6px;
+      bottom: 6px;
+      min-width: 24px;
+      height: 22px;
+      padding: 0 6px;
+      border: 2px solid rgba(255, 255, 255, .52);
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--wood-dark);
+      color: #fff4d8;
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 900;
+    }
+
+    @media (max-width: 900px), (orientation: portrait) {
+      body::before {
+        content: "建议横屏查看原型";
+        position: fixed;
+        z-index: 10;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(48, 38, 29, .88);
+        color: #fff4d8;
+        font-size: 24px;
+        font-weight: 900;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="nav">
+        <button class="back" aria-label="返回">‹</button>
+        <div class="title">玩具工坊防线</div>
+        <div class="chapter">章节 1：玩具桌 1</div>
+      </div>
+      <div class="resource" aria-label="玩具盒总数">
+        <span class="box-icon"></span>
+        玩具盒总数：<span id="totalBoxes">82</span>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="map" aria-label="章节选关">
+        <div class="map-label">当前章节选关</div>
+        <div class="path"></div>
+        <div class="toy" style="left: 12%; top: 64%; width: 128px; height: 74px;">积木堆</div>
+        <div class="toy" style="left: 72%; top: 22%; width: 146px; height: 86px;">收纳盒</div>
+        <div class="toy" style="left: 69%; top: 76%; width: 150px; height: 76px;">轨道区</div>
+        <button class="node active" style="left: 24%; top: 38%;" data-stage="1">1</button>
+        <button class="node" style="left: 46%; top: 52%;" data-stage="2">2</button>
+        <button class="node" style="left: 66%; top: 42%;" data-stage="3">3</button>
+        <button class="node locked" style="left: 78%; top: 62%;" data-stage="4">4</button>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-head">
+          <div class="kicker" id="panelMode">关卡侦察</div>
+          <div class="stage-title">
+            <h1 id="stageName">关卡 1</h1>
+            <span class="badge" id="stageBadge">玩具桌 1</span>
+          </div>
+        </div>
+        <div class="panel-body" id="panelBody"></div>
+        <div class="panel-foot" id="panelFoot"></div>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const initialBoxStock = { 1: 5, 2: 4, 3: 3, 4: 3, 5: 2, 6: 1 };
+
+    const state = {
+      stage: 1,
+      mode: "scout",
+      blueprintTab: "建筑",
+      selectedBlueprints: [],
+      selectedBoxes: [],
+      boxStock: { ...initialBoxStock }
+    };
+
+    const stages = {
+      1: { name: "关卡 1", badge: "玩具桌 1" },
+      2: { name: "关卡 2", badge: "玩具桌 1" },
+      3: { name: "关卡 3", badge: "玩具桌 1" },
+      4: { name: "关卡 4", badge: "未开放" }
+    };
+
+    const blueprintGroups = [
+      { name: "建筑", ids: [1, 2, 3] },
+      { name: "单位", ids: [1, 2, 3] },
+      { name: "事件", ids: [1, 2, 3] }
+    ];
+
+    const boxIds = [1, 2, 3, 4, 5, 6];
+    const panelMode = document.querySelector("#panelMode");
+    const stageName = document.querySelector("#stageName");
+    const stageBadge = document.querySelector("#stageBadge");
+    const panelBody = document.querySelector("#panelBody");
+    const panelFoot = document.querySelector("#panelFoot");
+
+    function render() {
+      const stage = stages[state.stage];
+      stageName.textContent = stage.name;
+      stageBadge.textContent = stage.badge;
+
+      document.querySelectorAll(".node").forEach((node) => {
+        node.classList.toggle("active", Number(node.dataset.stage) === state.stage);
+      });
+
+      if (state.mode === "scout") renderScout();
+      if (state.mode === "loadout") renderLoadout();
+    }
+
+    function renderScout() {
+      panelMode.textContent = "关卡侦察";
+      panelBody.innerHTML = `
+        <div class="section">
+          <div class="section-title">玩具桌预览</div>
+          <div class="preview">${state.stage}</div>
+        </div>
+        <div class="section">
+          <div class="section-title">关卡信息</div>
+          <div class="info-grid">
+            <div class="info-card"><strong>目标</strong>占位 1</div>
+            <div class="info-card"><strong>难度</strong>占位 ${state.stage}</div>
+            <div class="info-card"><strong>地图</strong>查看 1 / 2 / 3</div>
+            <div class="info-card"><strong>怪物</strong>情报 1 / 2 / 3</div>
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-title">奖励预览</div>
+          <div class="plain-box">奖励 1　奖励 2　奖励 3</div>
+        </div>
+      `;
+
+      panelFoot.innerHTML = `<button class="primary" id="prepareBtn">准备出战</button>`;
+      document.querySelector("#prepareBtn").addEventListener("click", () => {
+        state.mode = "loadout";
+        render();
+      });
+    }
+
+    function renderLoadout() {
+      panelMode.textContent = "战前配置";
+      const canStart = state.selectedBlueprints.length >= 1 && state.selectedBoxes.length >= 1;
+
+      panelBody.innerHTML = `
+        <div class="row section">
+          <button class="ghost" id="backScout">返回侦察</button>
+          <button class="ghost" id="usePreset">使用预设</button>
+          <div class="requirement">最低要求：图纸 1，玩具盒 1</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>已选图纸 ${state.selectedBlueprints.length}/4</span></div>
+          <div class="slots">${renderSlots(state.selectedBlueprints, 4, "图纸")}</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">图纸库</div>
+          <div class="tabs">
+            ${blueprintGroups.map((group) => `
+              <button class="tab ${state.blueprintTab === group.name ? "active" : ""}" data-blueprint-tab="${group.name}">
+                ${group.name}
+              </button>
+            `).join("")}
+          </div>
+          <div class="cards">
+            ${getCurrentBlueprintGroup().ids.map((id) => renderBlueprintCard(state.blueprintTab, id)).join("")}
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>已选玩具盒 ${state.selectedBoxes.length}/3</span></div>
+          <div class="slots box-slots">${renderSlots(state.selectedBoxes, 3, "盒")}</div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">玩具盒库存</div>
+          <div class="cards">${boxIds.map((id) => renderBoxCard(id)).join("")}</div>
+        </div>
+      `;
+
+      panelFoot.innerHTML = `
+        <div class="requirement">${canStart ? "配置已满足，可以开始战斗" : "请选择至少 1 张图纸和 1 个玩具盒"}</div>
+        <button class="primary" id="startBtn" ${canStart ? "" : "disabled"}>开始战斗</button>
+      `;
+
+      document.querySelector("#backScout").addEventListener("click", () => {
+        state.mode = "scout";
+        resetTemporaryBoxStock();
+        render();
+      });
+
+      document.querySelector("#usePreset").addEventListener("click", applyPreset);
+
+      document.querySelectorAll("[data-blueprint-tab]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.blueprintTab = button.dataset.blueprintTab;
+          render();
+        });
+      });
+
+      document.querySelectorAll("[data-blueprint]").forEach((button) => {
+        button.addEventListener("click", () => toggleBlueprint(button.dataset.blueprint));
+      });
+
+      document.querySelectorAll("[data-box]").forEach((button) => {
+        button.addEventListener("click", () => pickBox(Number(button.dataset.box)));
+      });
+
+      document.querySelector("#startBtn").addEventListener("click", () => {
+        if (canStart) alert("进入战斗：占位原型");
+      });
+    }
+
+    function renderSlots(selected, max, label) {
+      const items = [];
+      for (let i = 0; i < max; i += 1) {
+        const value = selected[i];
+        items.push(`<div class="slot ${value ? "filled" : ""}">${value ? `${label} ${value}` : "空"}</div>`);
+      }
+      return items.join("");
+    }
+
+    function getCurrentBlueprintGroup() {
+      return blueprintGroups.find((group) => group.name === state.blueprintTab) || blueprintGroups[0];
+    }
+
+    function renderBlueprintCard(group, id) {
+      const key = `${group}-${id}`;
+      const selected = state.selectedBlueprints.includes(key);
+      return `
+        <button class="card blueprint ${selected ? "selected" : ""}" data-blueprint="${key}">
+          <span>${id}</span>
+          <strong>${group}图纸 ${id}</strong>
+          <small>占位 ${id}</small>
+        </button>
+      `;
+    }
+
+    function renderBoxCard(id) {
+      const selectedCount = state.selectedBoxes.filter((boxId) => boxId === id).length;
+      const stock = state.boxStock[id];
+      return `
+        <button class="card box-card ${selectedCount ? "selected" : ""} ${stock <= 0 ? "empty" : ""}" data-box="${id}" ${stock <= 0 ? "disabled" : ""}>
+          <span>${id}</span>
+          <strong>盒 ${id}</strong>
+          <small>占位 ${id}</small>
+          <em class="stock">${stock}</em>
+        </button>
+      `;
+    }
+
+    function toggleBlueprint(key) {
+      const index = state.selectedBlueprints.indexOf(key);
+      if (index >= 0) {
+        state.selectedBlueprints.splice(index, 1);
+      } else if (state.selectedBlueprints.length < 4) {
+        state.selectedBlueprints.push(key);
+      }
+      render();
+    }
+
+    function pickBox(id) {
+      if (state.selectedBoxes.length >= 3 || state.boxStock[id] <= 0) return;
+      state.selectedBoxes.push(id);
+      state.boxStock[id] -= 1;
+      render();
+    }
+
+    function resetTemporaryBoxStock() {
+      state.selectedBoxes.forEach((id) => {
+        state.boxStock[id] += 1;
+      });
+      state.selectedBoxes = [];
+    }
+
+    function applyPreset() {
+      state.selectedBlueprints = [];
+      state.selectedBoxes = [];
+      state.boxStock = { ...initialBoxStock };
+
+      ["建筑-1", "单位-1", "事件-1", "建筑-2", "单位-2", "事件-2"].forEach((key) => {
+        if (state.selectedBlueprints.length < 4) state.selectedBlueprints.push(key);
+      });
+
+      [1, 1, 2, 3, 4].forEach((id) => {
+        if (state.selectedBoxes.length < 3 && state.boxStock[id] > 0) {
+          state.selectedBoxes.push(id);
+          state.boxStock[id] -= 1;
+        }
+      });
+
+      render();
+    }
+
+    document.querySelectorAll(".node").forEach((node) => {
+      node.addEventListener("click", () => {
+        if (node.classList.contains("locked")) return;
+        resetTemporaryBoxStock();
+        state.stage = Number(node.dataset.stage);
+        state.mode = "scout";
+        render();
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>

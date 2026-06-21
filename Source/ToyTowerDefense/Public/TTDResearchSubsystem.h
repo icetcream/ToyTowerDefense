@@ -33,7 +33,19 @@ public:
 	TArray<FTTDToyBoxDefinition> GetToyBoxes() const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
+	TArray<FTTDDiagramDefinition> GetDiagrams() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
+	TArray<FTTDPartDefinition> GetParts() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
 	TArray<FTTDPartDefinition> GetPartsForToyBox(FName ToyBoxId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
+	TArray<FTTDNameStack> GetPartInventory() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
+	int32 GetPartCount(FName PartId) const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
 	TArray<FTTDCraftQueueItem> GetCraftingQueue() const;
@@ -46,6 +58,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
 	bool ClaimCompletedToyBox(FGuid QueueId, TArray<FTTDPartDefinition>& OutUnlockedParts);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
+	bool CanResearchDiagram(FName DiagramId, FText& OutFailureReason) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
+	bool ResearchDiagram(FName DiagramId, FText& OutFailureReason);
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
 	void BroadcastCurrentResearchState() const;
@@ -77,11 +95,18 @@ private:
 	void SaveProgress();
 	void BroadcastQueueChanged() const;
 	void BroadcastToyBoxQueued(const FTTDCraftQueueItem& QueueItem) const;
-	void BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts) const;
+	void BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts, const TArray<FTTDNameStack>& GrantedParts) const;
 	void BroadcastCollectionChanged() const;
+	void BroadcastInventoryChanged() const;
 
 	const FTTDToyBoxDefinition* FindToyBox(FName ToyBoxId) const;
+	const FTTDDiagramDefinition* FindDiagram(FName DiagramId) const;
 	const FTTDPartDefinition* FindPart(FName PartId) const;
 	FString GetSaveSlotName() const;
 	bool IsUnlocked(const TArray<FName>& UnlockedIds, FName Id) const;
+	TArray<FTTDNameStack> GetDiagramPartCosts(const FTTDDiagramDefinition& Diagram) const;
+	bool HasPartCosts(const TArray<FTTDNameStack>& PartCosts, FText& OutFailureReason) const;
+	void ApplyPartCosts(const TArray<FTTDNameStack>& PartCosts);
+	void AddPartCount(FName PartId, int32 Count);
+	void NormalizePartInventory();
 };

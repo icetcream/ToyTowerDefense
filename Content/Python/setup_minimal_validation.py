@@ -518,13 +518,14 @@ def make_name_stack(item_id, count):
     return stack
 
 
-def make_runtime_stats(max_health, damage, attack_range, interval, projectile_speed):
+def make_runtime_stats(max_health, damage, attack_range, interval, projectile_speed, move_speed=0.0):
     stats = unreal.TTDBattleBuildingRuntimeStats()
     set_prop(stats, "MaxHealth", max_health)
     set_prop(stats, "AttackDamage", damage)
     set_prop(stats, "AttackRange", attack_range)
     set_prop(stats, "AttackInterval", interval)
     set_prop(stats, "ProjectileSpeed", projectile_speed)
+    set_prop(stats, "MoveSpeed", move_speed)
     return stats
 
 
@@ -532,6 +533,9 @@ def build_data_tables(asset_context):
     class_paths = asset_context["class_paths"]
 
     tables = {
+        "research_parts": make_data_table("DT_ResearchParts_Manual", "/Script/ToyTowerDefense.TTDPartDefinition"),
+        "research_diagrams": make_data_table("DT_ResearchDiagrams_Manual", "/Script/ToyTowerDefense.TTDDiagramDefinition"),
+        "research_toy_boxes": make_data_table("DT_ResearchToyBoxes_Manual", "/Script/ToyTowerDefense.TTDToyBoxDefinition"),
         "levels": make_data_table("DT_BattleLevels_Manual", "/Script/ToyTowerDefense.TTDBattleLevelDefinition"),
         "waves": make_data_table("DT_BattleWaves_Manual", "/Script/ToyTowerDefense.TTDWaveDefinition"),
         "enemies": make_data_table("DT_BattleEnemies_Manual", "/Script/ToyTowerDefense.TTDEnemyDefinition"),
@@ -540,6 +544,165 @@ def build_data_tables(asset_context):
         "height_effects": make_data_table("DT_BattleHeightEffects_Manual", "/Script/ToyTowerDefense.TTDBattleHeightEffectDefinition"),
         "object_pool": make_data_table("DT_ObjectPool_Manual", "/Script/ToyTowerDefense.TTDObjectPoolDefinition"),
     }
+
+    fill_table_from_rows(
+        tables["research_parts"],
+        {
+            "Gear": {"PartId": "Gear", "DisplayName": "齿轮", "Description": "基础机械零件，可驱动玩具机关。"},
+            "Spring": {"PartId": "Spring", "DisplayName": "弹簧", "Description": "为塔防玩具提供弹射和回弹能力。"},
+            "Battery": {"PartId": "Battery", "DisplayName": "电池", "Description": "提供持续能量的核心零件。"},
+            "Wheel": {"PartId": "Wheel", "DisplayName": "车轮", "Description": "适用于移动或旋转类玩具。"},
+            "Ribbon": {"PartId": "Ribbon", "DisplayName": "丝带", "Description": "装饰类零件，可用于提升玩具表现。"},
+            "Star": {"PartId": "Star", "DisplayName": "星徽", "Description": "稀有装饰零件，常用于高级图纸。"},
+            "Dice": {"PartId": "Dice", "DisplayName": "骰子", "Description": "带有随机主题的趣味零件。"},
+            "Card": {"PartId": "Card", "DisplayName": "纸牌", "Description": "用于扑克主题玩具的基础材料。"},
+        },
+    )
+
+    fill_table_from_rows(
+        tables["research_diagrams"],
+        {
+            "BasicTower": {
+                "DiagramId": "BasicTower",
+                "DisplayName": "基础塔图纸",
+                "Description": "基础攻击塔图纸，需要齿轮与弹簧搭建。",
+                "RequiredPartIds": ["Gear", "Spring"],
+                "PartCosts": [{"Id": "Gear", "Count": 1}, {"Id": "Spring", "Count": 1}],
+            },
+            "ProjectileTower": {
+                "DiagramId": "ProjectileTower",
+                "DisplayName": "弹射塔图纸",
+                "Description": "投射物塔图纸，需要齿轮与弹簧搭建。",
+                "RequiredPartIds": ["Gear", "Spring"],
+                "PartCosts": [{"Id": "Gear", "Count": 1}, {"Id": "Spring", "Count": 1}],
+            },
+            "JokerTower": {
+                "DiagramId": "JokerTower",
+                "DisplayName": "小丑塔图纸",
+                "Description": "基础攻击塔图纸，需要齿轮与弹簧搭建。",
+                "RequiredPartIds": ["Gear", "Spring"],
+                "PartCosts": [{"Id": "Gear", "Count": 1}, {"Id": "Spring", "Count": 1}],
+            },
+            "BatteryBlaster": {
+                "DiagramId": "BatteryBlaster",
+                "DisplayName": "电池炮台图纸",
+                "Description": "能量型炮台图纸，需要电池和齿轮。",
+                "RequiredPartIds": ["Battery", "Gear"],
+                "PartCosts": [{"Id": "Battery", "Count": 1}, {"Id": "Gear", "Count": 1}],
+            },
+            "RollingGuard": {
+                "DiagramId": "RollingGuard",
+                "DisplayName": "滚轮守卫图纸",
+                "Description": "控制路径的玩具守卫，需要车轮和弹簧。",
+                "RequiredPartIds": ["Wheel", "Spring"],
+                "PartCosts": [{"Id": "Wheel", "Count": 1}, {"Id": "Spring", "Count": 1}],
+            },
+            "RibbonTrap": {
+                "DiagramId": "RibbonTrap",
+                "DisplayName": "丝带陷阱图纸",
+                "Description": "减速类陷阱图纸，需要丝带和齿轮。",
+                "RequiredPartIds": ["Ribbon", "Gear"],
+                "PartCosts": [{"Id": "Ribbon", "Count": 1}, {"Id": "Gear", "Count": 1}],
+            },
+            "StarBeacon": {
+                "DiagramId": "StarBeacon",
+                "DisplayName": "星徽信标图纸",
+                "Description": "高级辅助塔图纸，需要星徽、电池和纸牌。",
+                "RequiredPartIds": ["Star", "Battery", "Card"],
+                "PartCosts": [{"Id": "Star", "Count": 1}, {"Id": "Battery", "Count": 1}, {"Id": "Card", "Count": 1}],
+            },
+            "DiceLauncher": {
+                "DiagramId": "DiceLauncher",
+                "DisplayName": "骰子发射器图纸",
+                "Description": "随机弹道塔图纸，需要骰子和弹簧。",
+                "RequiredPartIds": ["Dice", "Spring"],
+                "PartCosts": [{"Id": "Dice", "Count": 1}, {"Id": "Spring", "Count": 1}],
+            },
+            "CardWall": {
+                "DiagramId": "CardWall",
+                "DisplayName": "纸牌墙图纸",
+                "Description": "防御障碍图纸，需要纸牌和丝带。",
+                "RequiredPartIds": ["Card", "Ribbon"],
+                "PartCosts": [{"Id": "Card", "Count": 1}, {"Id": "Ribbon", "Count": 1}],
+            },
+            "ClockworkToy": {
+                "DiagramId": "ClockworkToy",
+                "DisplayName": "发条玩具图纸",
+                "Description": "复合型玩具图纸，需要齿轮、弹簧和车轮。",
+                "RequiredPartIds": ["Gear", "Spring", "Wheel"],
+                "PartCosts": [{"Id": "Gear", "Count": 1}, {"Id": "Spring", "Count": 1}, {"Id": "Wheel", "Count": 1}],
+            },
+            "PrismJoker": {
+                "DiagramId": "PrismJoker",
+                "DisplayName": "棱彩小丑图纸",
+                "Description": "稀有攻击塔图纸，需要星徽和骰子。",
+                "RequiredPartIds": ["Star", "Dice"],
+                "PartCosts": [{"Id": "Star", "Count": 1}, {"Id": "Dice", "Count": 1}],
+            },
+            "CarnivalCore": {
+                "DiagramId": "CarnivalCore",
+                "DisplayName": "狂欢核心图纸",
+                "Description": "终阶核心图纸，需要多种高级零件组合。",
+                "RequiredPartIds": ["Star", "Battery", "Dice", "Card"],
+                "PartCosts": [{"Id": "Star", "Count": 1}, {"Id": "Battery", "Count": 1}, {"Id": "Dice", "Count": 1}, {"Id": "Card", "Count": 1}],
+            },
+        },
+    )
+
+    fill_table_from_rows(
+        tables["research_toy_boxes"],
+        {
+            "BasicToyBox": {
+                "ToyBoxId": "BasicToyBox",
+                "DisplayName": "基础玩具盒",
+                "Description": "常见零件玩具盒，适合早期制作。",
+                "PossiblePartIds": ["Gear", "Spring", "Card"],
+                "CraftDurationSeconds": 20.0,
+            },
+            "MechanicToyBox": {
+                "ToyBoxId": "MechanicToyBox",
+                "DisplayName": "机械玩具盒",
+                "Description": "偏向机械结构零件的玩具盒。",
+                "PossiblePartIds": ["Gear", "Wheel", "Spring"],
+                "CraftDurationSeconds": 35.0,
+            },
+            "EnergyToyBox": {
+                "ToyBoxId": "EnergyToyBox",
+                "DisplayName": "能量玩具盒",
+                "Description": "更容易开出电池类零件。",
+                "PossiblePartIds": ["Battery", "Gear", "Star"],
+                "CraftDurationSeconds": 45.0,
+            },
+            "PartyToyBox": {
+                "ToyBoxId": "PartyToyBox",
+                "DisplayName": "派对玩具盒",
+                "Description": "包含装饰和随机主题零件。",
+                "PossiblePartIds": ["Ribbon", "Dice", "Card"],
+                "CraftDurationSeconds": 50.0,
+            },
+            "RareToyBox": {
+                "ToyBoxId": "RareToyBox",
+                "DisplayName": "稀有玩具盒",
+                "Description": "有机会获得高级图纸所需零件。",
+                "PossiblePartIds": ["Star", "Battery", "Dice"],
+                "CraftDurationSeconds": 70.0,
+            },
+            "CardToyBox": {
+                "ToyBoxId": "CardToyBox",
+                "DisplayName": "纸牌玩具盒",
+                "Description": "纸牌主题零件集合。",
+                "PossiblePartIds": ["Card", "Dice", "Ribbon"],
+                "CraftDurationSeconds": 40.0,
+            },
+            "GuardToyBox": {
+                "ToyBoxId": "GuardToyBox",
+                "DisplayName": "守卫玩具盒",
+                "Description": "防御类玩具常用零件集合。",
+                "PossiblePartIds": ["Wheel", "Gear", "Battery"],
+                "CraftDurationSeconds": 55.0,
+            },
+        },
+    )
 
     fill_table_from_rows(
         tables["height_effects"],
@@ -560,6 +723,7 @@ def build_data_tables(asset_context):
         {
             "BasicEnemy": {
                 "EnemyId": "BasicEnemy",
+                "DisplayName": "基础敌人",
                 "EnemyClass": class_paths["enemy"],
                 "MaxHealth": 25.0,
                 "MoveSpeed": 90.0,
@@ -568,6 +732,7 @@ def build_data_tables(asset_context):
                 "AttackInterval": 1.0,
                 "ProgressWeight": 1.0,
                 "CurrencyDrop": 1,
+                "CurrencyDropChance": 1.0,
             }
         },
     )
@@ -578,6 +743,7 @@ def build_data_tables(asset_context):
             "WaveA": {
                 "WaveId": "WaveA",
                 "DelayBeforeWave": 0.0,
+                "WaveDurationSeconds": 30.0,
                 "EnemyEntries": [
                     {
                         "EnemyId": "BasicEnemy",
@@ -595,6 +761,7 @@ def build_data_tables(asset_context):
         {
             "BasicTower": {
                 "BuildingId": "BasicTower",
+                "DisplayName": "基础塔",
                 "RequiredDiagramId": "BasicTower",
                 "BuildingClass": class_paths["basic_tower"],
                 "PartCosts": [{"Id": "Gear", "Count": 2}],
@@ -605,14 +772,16 @@ def build_data_tables(asset_context):
                     "AttackRange": 1000.0,
                     "AttackInterval": 0.5,
                     "ProjectileSpeed": 900.0,
+                    "MoveSpeed": 0.0,
                 },
                 "ProjectileClass": "None",
             },
             "ProjectileTower": {
                 "BuildingId": "ProjectileTower",
-                "RequiredDiagramId": "BasicTower",
+                "DisplayName": "弹射塔",
+                "RequiredDiagramId": "ProjectileTower",
                 "BuildingClass": class_paths["projectile_tower"],
-                "PartCosts": [{"Id": "Gear", "Count": 1}],
+                "PartCosts": [{"Id": "Gear", "Count": 1}, {"Id": "Spring", "Count": 1}],
                 "AttackMode": "Projectile",
                 "BaseStats": {
                     "MaxHealth": 50.0,
@@ -620,6 +789,7 @@ def build_data_tables(asset_context):
                     "AttackRange": 1000.0,
                     "AttackInterval": 0.35,
                     "ProjectileSpeed": 3000.0,
+                    "MoveSpeed": 0.0,
                 },
                 "ProjectileClass": class_paths["projectile"],
             },
@@ -629,8 +799,9 @@ def build_data_tables(asset_context):
     fill_table_from_rows(
         tables["toy_boxes"],
         {
-            "BasicBox": {
-                "ToyBoxId": "BasicBox",
+            "BasicToyBox": {
+                "ToyBoxId": "BasicToyBox",
+                "DisplayName": "基础玩具盒",
                 "PurchaseCost": 5,
                 "RollCount": 2,
                 "RewardEntries": [
@@ -641,7 +812,35 @@ def build_data_tables(asset_context):
                         "MaxQuantity": 1,
                     }
                 ],
-            }
+            },
+            "MechanicToyBox": {
+                "ToyBoxId": "MechanicToyBox",
+                "DisplayName": "机械玩具盒",
+                "PurchaseCost": 8,
+                "RollCount": 2,
+                "RewardEntries": [
+                    {
+                        "PartId": "Wheel",
+                        "Weight": 1.0,
+                        "MinQuantity": 1,
+                        "MaxQuantity": 1,
+                    }
+                ],
+            },
+            "EnergyToyBox": {
+                "ToyBoxId": "EnergyToyBox",
+                "DisplayName": "能量玩具盒",
+                "PurchaseCost": 8,
+                "RollCount": 2,
+                "RewardEntries": [
+                    {
+                        "PartId": "Battery",
+                        "Weight": 1.0,
+                        "MinQuantity": 1,
+                        "MaxQuantity": 1,
+                    }
+                ],
+            },
         },
     )
 
@@ -650,6 +849,24 @@ def build_data_tables(asset_context):
         {
             DEFAULT_LEVEL_ID: {
                 "LevelId": DEFAULT_LEVEL_ID,
+                "DisplayName": "原型战斗",
+                "Description": "用于最小手动验证的玩具塔防原型关卡。",
+                "Background": {
+                    "bSpawnBackground": True,
+                    "BackgroundClass": "/Script/ToyTowerDefense.TTDBattleBackgroundActor",
+                    "Transform": {
+                        "Rotation": {"X": 0.0, "Y": 0.0, "Z": 0.0, "W": 1.0},
+                        "Translation": {"X": 0.0, "Y": 0.0, "Z": -20.0},
+                        "Scale3D": {"X": 1.0, "Y": 1.0, "Z": 1.0},
+                    },
+                    "ArenaHalfExtent": {"X": 1200.0, "Y": 1200.0},
+                    "GroundThickness": 24.0,
+                    "WallHeight": 260.0,
+                    "WallThickness": 80.0,
+                    "GroundColor": {"R": 0.38, "G": 0.58, "B": 0.42, "A": 1.0},
+                    "WallColor": {"R": 0.56, "G": 0.76, "B": 0.86, "A": 1.0},
+                    "LightColor": {"R": 1.0, "G": 0.93, "B": 0.82, "A": 1.0},
+                },
                 "CastleClass": class_paths["castle"],
                 "CastleTransform": {
                     "Rotation": {"X": 0.0, "Y": 0.0, "Z": 0.0, "W": 1.0},
@@ -658,10 +875,14 @@ def build_data_tables(asset_context):
                 },
                 "CastleMaxHealth": 500.0,
                 "WaveIds": ["WaveA"],
-                "StartingDiagramIds": ["BasicTower"],
-                "StartingToyBoxes": [{"Id": "BasicBox", "Count": 1}],
-                "StartingParts": [{"Id": "Gear", "Count": 20}, {"Id": "Spring", "Count": 1}],
+                "StartingDiagramIds": ["BasicTower", "ProjectileTower"],
+                "StartingToyBoxes": [{"Id": "BasicToyBox", "Count": 1}],
+                "StartingParts": [{"Id": "Gear", "Count": 20}, {"Id": "Spring", "Count": 10}],
                 "StartingCurrency": 10,
+                "MaxSelectedDiagrams": 3,
+                "MaxSelectedToyBoxes": 3,
+                "PreparationDurationSeconds": 3.0,
+                "VictoryReturnDelaySeconds": 5.0,
             }
         },
     )
@@ -883,6 +1104,9 @@ def configure_developer_settings(tables):
     set_prop(settings, "DefaultBattleLevelId", DEFAULT_LEVEL_ID)
 
     tag_to_table = {
+        "TTD.DataTable.Research.Parts": tables["research_parts"],
+        "TTD.DataTable.Research.Diagrams": tables["research_diagrams"],
+        "TTD.DataTable.Research.ToyBoxes": tables["research_toy_boxes"],
         "TTD.DataTable.Battle.Levels": tables["levels"],
         "TTD.DataTable.Battle.Waves": tables["waves"],
         "TTD.DataTable.Battle.Enemies": tables["enemies"],

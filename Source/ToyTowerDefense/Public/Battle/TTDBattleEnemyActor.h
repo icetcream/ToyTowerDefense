@@ -33,6 +33,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	int32 GetCurrencyDrop() const { return CurrencyDrop; }
 
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	float GetCurrencyDropChance() const { return CurrencyDropChance; }
+
 	virtual void OnPoolCreated_Implementation(UObject* PoolOwner) override;
 	virtual void OnAcquireFromPool_Implementation(const FTransform& SpawnTransform, UObject* RequestContext) override;
 	virtual void OnReleaseToPool_Implementation() override;
@@ -57,6 +60,7 @@ private:
 	float AttackAccumulator = 0.0f;
 	float ProgressWeight = 1.0f;
 	int32 CurrencyDrop = 1;
+	float CurrencyDropChance = 1.0f;
 
 	void MoveAndAttack(float DeltaSeconds, UTTDBattleWorldSubsystem& BattleSubsystem);
 	void ApplyVisualMaterial();

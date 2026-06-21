@@ -27,6 +27,7 @@ bool FTTDDeveloperSettingsTests::RunTest(const FString& Parameters)
 	TestTrue(TEXT("battle height effects data table slot is configured by gameplay tag"), Settings->GameplayTagDataTables.Contains(TAG_TTD_DataTable_Battle_HeightEffects));
 	TestEqual(TEXT("crafting queue capacity comes from settings"), Settings->CraftingQueueMaxSlots, 5);
 	TestEqual(TEXT("default battle level id comes from settings"), Settings->DefaultBattleLevelId, FName(TEXT("PrototypeBattle")));
+	TestFalse(TEXT("battle test cheat button is hidden by default"), Settings->bShowBattleTestCheatButton);
 
 	return true;
 }

@@ -7,14 +7,14 @@
 #include "Components/VerticalBoxSlot.h"
 #include "TTDMenuPlayerController.h"
 #include "UI/TTDActionButtonWidget.h"
+#include "UI/TTDUIStyle.h"
 
 void UTTDStartMenuWidget::NativeOnInitialized()
 {
 	Super::NativeOnInitialized();
 
 	UBorder* Root = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass());
-	Root->SetBrushColor(FLinearColor(0.03f, 0.05f, 0.07f, 1.0f));
-	Root->SetPadding(FMargin(80.0f));
+	TTDUIStyle::ApplyPanel(Root, TTDUIStyle::Backdrop(), FMargin(88.0f, 64.0f));
 
 	UVerticalBox* Box = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
 	Root->AddChild(Box);
@@ -22,35 +22,39 @@ void UTTDStartMenuWidget::NativeOnInitialized()
 
 	UTextBlock* Title = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
 	Title->SetText(FText::FromString(TEXT("玩具塔防")));
-	Title->SetJustification(ETextJustify::Center);
-	Title->SetColorAndOpacity(FSlateColor(FLinearColor(0.98f, 0.82f, 0.25f, 1.0f)));
-	FSlateFontInfo TitleFont = Title->GetFont();
-	TitleFont.Size = 56;
-	Title->SetFont(TitleFont);
+	TTDUIStyle::ApplyText(Title, 64, TTDUIStyle::Ink(), ETextJustify::Center, false);
 
 	UVerticalBoxSlot* TitleSlot = Box->AddChildToVerticalBox(Title);
 	TitleSlot->SetHorizontalAlignment(HAlign_Center);
-	TitleSlot->SetPadding(FMargin(0.0f, 120.0f, 0.0f, 40.0f));
+	TitleSlot->SetPadding(FMargin(0.0f, 116.0f, 0.0f, 18.0f));
 
 	UTextBlock* Subtitle = WidgetTree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-	Subtitle->SetText(FText::FromString(TEXT("开始界面")));
-	Subtitle->SetJustification(ETextJustify::Center);
-	Subtitle->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-	FSlateFontInfo SubtitleFont = Subtitle->GetFont();
-	SubtitleFont.Size = 26;
-	Subtitle->SetFont(SubtitleFont);
+	Subtitle->SetText(FText::FromString(TEXT("组装、守护、打开下一只玩具盒")));
+	TTDUIStyle::ApplyText(Subtitle, 26, TTDUIStyle::MutedInk(), ETextJustify::Center, false);
 
 	UVerticalBoxSlot* SubtitleSlot = Box->AddChildToVerticalBox(Subtitle);
 	SubtitleSlot->SetHorizontalAlignment(HAlign_Center);
-	SubtitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 40.0f));
+	SubtitleSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 54.0f));
 
 	UTTDActionButtonWidget* StartButton = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
 	FSimpleDelegate StartDelegate;
 	StartDelegate.BindUObject(this, &UTTDStartMenuWidget::HandleStartClicked);
-	StartButton->Configure(FText::FromString(TEXT("开始游戏")), true, StartDelegate);
+	StartButton->Configure(FText::FromString(TEXT("开始游戏")), true, StartDelegate, ETTDActionButtonVariant::Primary);
 
 	UVerticalBoxSlot* ButtonSlot = Box->AddChildToVerticalBox(StartButton);
 	ButtonSlot->SetHorizontalAlignment(HAlign_Center);
+}
+
+void UTTDStartMenuWidget::NativeConstruct()
+{
+	Super::NativeConstruct();
+	TTDUIStyle::ResetFadeIn(this, EntranceElapsed);
+}
+
+void UTTDStartMenuWidget::NativeTick(const FGeometry& MyGeometry, const float InDeltaTime)
+{
+	Super::NativeTick(MyGeometry, InDeltaTime);
+	TTDUIStyle::TickFadeIn(this, EntranceElapsed, InDeltaTime);
 }
 
 void UTTDStartMenuWidget::HandleStartClicked()

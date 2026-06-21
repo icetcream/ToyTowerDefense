@@ -18,7 +18,7 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Toy Tower Defense|Object Pool")
 	void OnPoolCreated(UObject* PoolOwner);
 
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Toy Tower Defense|Object Pool")
+	UFUNCTION(BlueprintNativeEvent, BlueprintNativeEvent, Category = "Toy Tower Defense|Object Pool")
 	void OnAcquireFromPool(const FTransform& SpawnTransform, UObject* RequestContext);
 
 	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Toy Tower Defense|Object Pool")
