@@ -153,6 +153,21 @@ struct FTTDBattleBuildingRuntimeStats
 };
 
 USTRUCT(BlueprintType)
+struct FTTDBattleBuildingUpgradeOption
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle")
+	FName PartId;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "1"))
+	int32 PartCost = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle")
+	TArray<FTTDBattleAttributeModifier> Modifiers;
+};
+
+USTRUCT(BlueprintType)
 struct FTTDEnemyDefinition : public FTableRowBase
 {
 	GENERATED_BODY()
@@ -255,6 +270,9 @@ struct FTTDBuildingDefinition : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (EditCondition = "AttackMode == ETTDBuildingAttackMode::Projectile"))
 	TSoftClassPtr<AActor> ProjectileClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle")
+	TArray<FTTDBattleBuildingUpgradeOption> UpgradeOptions;
 };
 
 USTRUCT(BlueprintType)
@@ -336,6 +354,24 @@ struct FTTDBattleLevelDefinition : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "0"))
 	int32 StartingCurrency = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "0"))
+	int32 StartingBuildingCapacity = 0;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "0"))
+	int32 BuildingCapacityPurchaseCost = 10;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "1"))
+	int32 StartingBuildingLevelCap = 1;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "0"))
+	int32 BuildingLevelCapPurchaseCost = 10;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle")
+	bool bAllowArbitraryBuildPlacement = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "0.0"))
+	float ArbitraryBuildMinSpacing = 180.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Toy Tower Defense|Battle", meta = (ClampMin = "0"))
 	int32 MaxSelectedDiagrams = 3;

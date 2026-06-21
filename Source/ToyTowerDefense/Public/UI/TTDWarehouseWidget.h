@@ -37,5 +37,6 @@ private:
 	void HandleCollectionChangedMessage(FGameplayTag Channel, const FTTDResearchCollectionChangedMessage& Message);
 	void RefreshContent();
 	void AddPartInventorySection(const UTTDResearchSubsystem& ResearchSubsystem);
+	void AddToyBoxInventorySection(const UTTDResearchSubsystem& ResearchSubsystem);
 	void AddCollectionSection(const FText& Title, const TArray<FTTDCollectionEntry>& Entries, const TCHAR* EmptyText);
 };

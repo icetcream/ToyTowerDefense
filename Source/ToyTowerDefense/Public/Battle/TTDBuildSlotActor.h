@@ -39,6 +39,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	void ConfigureSlot(FName InSlotId, FIntPoint InGridCoordinate, int32 InHeightLevel, FName InHeightEffectId);
 
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	bool IsRuntimeGeneratedSlot() const { return bRuntimeGeneratedSlot; }
+
+	void MarkRuntimeGeneratedSlot();
 	void SetOccupyingBuilding(AActor* Building);
 	void ClearOccupyingBuilding(AActor* Building);
 
@@ -66,6 +70,9 @@ private:
 
 	UPROPERTY(Transient)
 	TWeakObjectPtr<AActor> OccupyingBuilding;
+
+	UPROPERTY(Transient)
+	bool bRuntimeGeneratedSlot = false;
 
 	void ApplyVisualMaterial();
 };

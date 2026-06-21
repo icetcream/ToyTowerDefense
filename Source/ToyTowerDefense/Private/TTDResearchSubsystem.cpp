@@ -368,6 +368,26 @@ TArray<FTTDNameStack> UTTDResearchSubsystem::GetPartInventory() const
 	return Result;
 }
 
+TArray<FTTDNameStack> UTTDResearchSubsystem::GetToyBoxInventory() const
+{
+	TArray<FTTDNameStack> Result;
+	if (!ActiveSave)
+	{
+		return Result;
+	}
+
+	for (const FTTDNameStack& Stack : ActiveSave->ToyBoxInventory)
+	{
+		if (!Stack.Id.IsNone() && Stack.Count > 0)
+		{
+			Result.Add(Stack);
+		}
+	}
+
+	SortStacksById(Result);
+	return Result;
+}
+
 int32 UTTDResearchSubsystem::GetPartCount(const FName PartId) const
 {
 	if (!ActiveSave || PartId.IsNone())
@@ -378,6 +398,24 @@ int32 UTTDResearchSubsystem::GetPartCount(const FName PartId) const
 	for (const FTTDNameStack& Stack : ActiveSave->PartInventory)
 	{
 		if (Stack.Id == PartId)
+		{
+			return FMath::Max(0, Stack.Count);
+		}
+	}
+
+	return 0;
+}
+
+int32 UTTDResearchSubsystem::GetToyBoxCount(const FName ToyBoxId) const
+{
+	if (!ActiveSave || ToyBoxId.IsNone())
+	{
+		return 0;
+	}
+
+	for (const FTTDNameStack& Stack : ActiveSave->ToyBoxInventory)
+	{
+		if (Stack.Id == ToyBoxId)
 		{
 			return FMath::Max(0, Stack.Count);
 		}
@@ -449,29 +487,18 @@ bool UTTDResearchSubsystem::ClaimCompletedToyBox(const FGuid QueueId, TArray<FTT
 
 	const FTTDToyBoxDefinition* ToyBox = FindToyBox(ClaimedItem.ToyBoxId);
 	TArray<FTTDNameStack> GrantedParts;
+	TArray<FTTDNameStack> GrantedToyBoxes;
 	if (ToyBox)
 	{
-		for (const FName PartId : ToyBox->PossiblePartIds)
-		{
-			AddPartCount(PartId, 1);
-			AddStackCount(GrantedParts, PartId, 1);
-
-			if (!IsUnlocked(ActiveSave->UnlockedPartIds, PartId))
-			{
-				AddUniqueName(ActiveSave->UnlockedPartIds, PartId);
-
-				if (const FTTDPartDefinition* Part = FindPart(PartId))
-				{
-					OutUnlockedParts.Add(*Part);
-				}
-			}
-		}
+		AddToyBoxCount(ToyBox->ToyBoxId, 1);
+		AddStackCount(GrantedToyBoxes, ToyBox->ToyBoxId, 1);
 	}
 
 	bProgressDirty = true;
 	SaveProgress();
 	SortStacksById(GrantedParts);
-	BroadcastToyBoxClaimed(ClaimedItem, OutUnlockedParts, GrantedParts);
+	SortStacksById(GrantedToyBoxes);
+	BroadcastToyBoxClaimed(ClaimedItem, OutUnlockedParts, GrantedParts, GrantedToyBoxes);
 	BroadcastQueueChanged();
 	BroadcastInventoryChanged();
 	if (OutUnlockedParts.Num() > 0)
@@ -526,6 +553,58 @@ bool UTTDResearchSubsystem::ResearchDiagram(const FName DiagramId, FText& OutFai
 	bProgressDirty = true;
 	SaveProgress();
 	BroadcastCollectionChanged();
+	BroadcastInventoryChanged();
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
+bool UTTDResearchSubsystem::CanConsumeToyBoxes(const TArray<FTTDNameStack>& ToyBoxesToConsume, FText& OutFailureReason) const
+{
+	if (!ActiveSave)
+	{
+		OutFailureReason = Text(TEXT("研究所进度尚未初始化"));
+		return false;
+	}
+
+	TArray<FTTDNameStack> NormalizedCosts;
+	for (const FTTDNameStack& ToyBoxCost : ToyBoxesToConsume)
+	{
+		AddStackCount(NormalizedCosts, ToyBoxCost.Id, ToyBoxCost.Count);
+	}
+
+	for (const FTTDNameStack& ToyBoxCost : NormalizedCosts)
+	{
+		if (ToyBoxCost.Id.IsNone() || ToyBoxCost.Count <= 0)
+		{
+			continue;
+		}
+
+		const int32 AvailableCount = GetToyBoxCount(ToyBoxCost.Id);
+		if (AvailableCount < ToyBoxCost.Count)
+		{
+			OutFailureReason = FText::Format(
+				FText::FromString(TEXT("玩具盒库存不足：{0} 需要 {1}，当前 {2}")),
+				FText::FromName(ToyBoxCost.Id),
+				FText::AsNumber(ToyBoxCost.Count),
+				FText::AsNumber(AvailableCount));
+			return false;
+		}
+	}
+
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
+bool UTTDResearchSubsystem::ConsumeToyBoxes(const TArray<FTTDNameStack>& ToyBoxesToConsume, FText& OutFailureReason)
+{
+	if (!CanConsumeToyBoxes(ToyBoxesToConsume, OutFailureReason))
+	{
+		return false;
+	}
+
+	ApplyToyBoxCosts(ToyBoxesToConsume);
+	bProgressDirty = true;
+	SaveProgress();
 	BroadcastInventoryChanged();
 	OutFailureReason = FText::GetEmpty();
 	return true;
@@ -616,7 +695,7 @@ void UTTDResearchSubsystem::LoadOrCreateProgress()
 	if (UGameplayStatics::DoesSaveGameExist(SaveSlotName, UserIndex))
 	{
 		ActiveSave = Cast<UTTDSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlotName, UserIndex));
-		if (ActiveSave && ActiveSave->SaveVersion < UTTDSaveGame::CurrentSaveVersion)
+		if (ActiveSave && ActiveSave->SaveVersion < 2)
 		{
 			UE_LOG(LogTTDResearch, Warning, TEXT("Resetting research progress because save version %d is older than %d."), ActiveSave->SaveVersion, UTTDSaveGame::CurrentSaveVersion);
 			UGameplayStatics::DeleteGameInSlot(SaveSlotName, UserIndex);
@@ -632,13 +711,15 @@ void UTTDResearchSubsystem::LoadOrCreateProgress()
 	}
 	else
 	{
+		bProgressDirty |= ActiveSave->SaveVersion < UTTDSaveGame::CurrentSaveVersion;
 		ActiveSave->SaveVersion = UTTDSaveGame::CurrentSaveVersion;
 		NormalizePartInventory();
+		NormalizeToyBoxInventory();
 	}
 
 	const int32 RemovedQueueItems = CraftingQueue.SetQueue(ActiveSave->CraftingQueue);
 	AutosaveAccumulatorSeconds = 0.0f;
-	bProgressDirty = RemovedQueueItems > 0;
+	bProgressDirty |= RemovedQueueItems > 0;
 	if (RemovedQueueItems > 0)
 	{
 		UE_LOG(LogTTDResearch, Warning, TEXT("Removed %d invalid or overflow crafting queue item(s) while loading research progress."), RemovedQueueItems);
@@ -708,6 +789,7 @@ void UTTDResearchSubsystem::SaveProgress()
 	}
 
 	NormalizePartInventory();
+	NormalizeToyBoxInventory();
 	ActiveSave->SaveVersion = UTTDSaveGame::CurrentSaveVersion;
 	ActiveSave->CraftingQueue = CraftingQueue.GetQueue();
 	ActiveSave->LastSavedUnixSeconds = FDateTime::UtcNow().ToUnixTimestamp();
@@ -744,7 +826,7 @@ void UTTDResearchSubsystem::BroadcastToyBoxQueued(const FTTDCraftQueueItem& Queu
 	}
 }
 
-void UTTDResearchSubsystem::BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts, const TArray<FTTDNameStack>& GrantedParts) const
+void UTTDResearchSubsystem::BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts, const TArray<FTTDNameStack>& GrantedParts, const TArray<FTTDNameStack>& GrantedToyBoxes) const
 {
 	if (const UGameInstance* GameInstance = GetGameInstance())
 	{
@@ -754,7 +836,9 @@ void UTTDResearchSubsystem::BroadcastToyBoxClaimed(const FTTDCraftQueueItem& Que
 			Message.QueueItem = QueueItem;
 			Message.NewlyUnlockedParts = NewlyUnlockedParts;
 			Message.GrantedParts = GrantedParts;
+			Message.GrantedToyBoxes = GrantedToyBoxes;
 			Message.PartInventory = GetPartInventory();
+			Message.ToyBoxInventory = GetToyBoxInventory();
 			MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Research_Queue_Claimed, Message);
 		}
 	}
@@ -793,6 +877,7 @@ void UTTDResearchSubsystem::BroadcastInventoryChanged() const
 		{
 			FTTDResearchInventoryChangedMessage Message;
 			Message.PartInventory = GetPartInventory();
+			Message.ToyBoxInventory = GetToyBoxInventory();
 			MessageSubsystem->BroadcastMessage(TAG_TTD_Message_Research_Inventory_Changed, Message);
 		}
 	}
@@ -924,6 +1009,50 @@ void UTTDResearchSubsystem::AddPartCount(const FName PartId, const int32 Count)
 	NormalizePartInventory();
 }
 
+void UTTDResearchSubsystem::AddToyBoxCount(const FName ToyBoxId, const int32 Count)
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	AddStackCount(ActiveSave->ToyBoxInventory, ToyBoxId, Count);
+	NormalizeToyBoxInventory();
+}
+
+void UTTDResearchSubsystem::ApplyToyBoxCosts(const TArray<FTTDNameStack>& ToyBoxCosts)
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	TArray<FTTDNameStack> NormalizedCosts;
+	for (const FTTDNameStack& ToyBoxCost : ToyBoxCosts)
+	{
+		AddStackCount(NormalizedCosts, ToyBoxCost.Id, ToyBoxCost.Count);
+	}
+
+	for (const FTTDNameStack& ToyBoxCost : NormalizedCosts)
+	{
+		if (ToyBoxCost.Id.IsNone() || ToyBoxCost.Count <= 0)
+		{
+			continue;
+		}
+
+		for (FTTDNameStack& Stack : ActiveSave->ToyBoxInventory)
+		{
+			if (Stack.Id == ToyBoxCost.Id)
+			{
+				Stack.Count = FMath::Max(0, Stack.Count - ToyBoxCost.Count);
+				break;
+			}
+		}
+	}
+
+	NormalizeToyBoxInventory();
+}
+
 void UTTDResearchSubsystem::NormalizePartInventory()
 {
 	if (!ActiveSave)
@@ -942,4 +1071,24 @@ void UTTDResearchSubsystem::NormalizePartInventory()
 
 	SortStacksById(NormalizedInventory);
 	ActiveSave->PartInventory = MoveTemp(NormalizedInventory);
+}
+
+void UTTDResearchSubsystem::NormalizeToyBoxInventory()
+{
+	if (!ActiveSave)
+	{
+		return;
+	}
+
+	TArray<FTTDNameStack> NormalizedInventory;
+	for (const FTTDNameStack& Stack : ActiveSave->ToyBoxInventory)
+	{
+		if (!Stack.Id.IsNone() && Stack.Count > 0)
+		{
+			AddStackCount(NormalizedInventory, Stack.Id, Stack.Count);
+		}
+	}
+
+	SortStacksById(NormalizedInventory);
+	ActiveSave->ToyBoxInventory = MoveTemp(NormalizedInventory);
 }

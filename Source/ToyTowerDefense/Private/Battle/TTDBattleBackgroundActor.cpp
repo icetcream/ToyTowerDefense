@@ -75,6 +75,9 @@ void ATTDBattleBackgroundActor::ApplyDefinition()
 	const float WallThickness = FMath::Max(0.0f, Definition.WallThickness);
 
 	ConfigureCubeMesh(GroundMesh);
+	GroundMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	GroundMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+	GroundMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	GroundMesh->SetRelativeLocation(FVector(0.0f, 0.0f, -GroundThickness * 0.5f));
 	GroundMesh->SetRelativeScale3D(FVector(HalfExtent.X / 50.0f, HalfExtent.Y / 50.0f, GroundThickness / 100.0f));
 	ApplyMeshColor(GroundMesh, Definition.GroundColor);

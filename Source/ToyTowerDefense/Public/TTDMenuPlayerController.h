@@ -18,6 +18,7 @@ public:
 	ATTDMenuPlayerController();
 
 	virtual void BeginPlay() override;
+	virtual void PlayerTick(float DeltaTime) override;
 	virtual void SetupInputComponent() override;
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Menu")
@@ -90,9 +91,23 @@ private:
 	FName PendingBattleLevelId;
 	FText LastBattleFailureReason;
 	TWeakObjectPtr<ACameraActor> BattleCameraActor;
+	FVector2D BattleCameraMoveInput = FVector2D::ZeroVector;
+	FVector2D LastBattleCameraDragMousePosition = FVector2D::ZeroVector;
+	bool bDraggingBattleCamera = false;
 
 	void ShowWidget(TSubclassOf<UUserWidget> WidgetClass);
 	void HandleBattleClick();
+	void HandleBattleCameraForwardPressed();
+	void HandleBattleCameraForwardReleased();
+	void HandleBattleCameraBackwardPressed();
+	void HandleBattleCameraBackwardReleased();
+	void HandleBattleCameraRightPressed();
+	void HandleBattleCameraRightReleased();
+	void HandleBattleCameraLeftPressed();
+	void HandleBattleCameraLeftReleased();
+	void HandleBattleCameraDragPressed();
+	void HandleBattleCameraDragReleased();
+	void TickBattleCameraMovement(float DeltaTime);
 	void ApplyBattleCameraView();
 	ACameraActor* FindPlacedBattleCamera() const;
 	ACameraActor* SpawnFallbackBattleCamera();

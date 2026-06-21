@@ -45,7 +45,13 @@ public:
 	TArray<FTTDNameStack> GetPartInventory() const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
+	TArray<FTTDNameStack> GetToyBoxInventory() const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
 	int32 GetPartCount(FName PartId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
+	int32 GetToyBoxCount(FName ToyBoxId) const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Research")
 	TArray<FTTDCraftQueueItem> GetCraftingQueue() const;
@@ -64,6 +70,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
 	bool ResearchDiagram(FName DiagramId, FText& OutFailureReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
+	bool CanConsumeToyBoxes(const TArray<FTTDNameStack>& ToyBoxesToConsume, FText& OutFailureReason) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
+	bool ConsumeToyBoxes(const TArray<FTTDNameStack>& ToyBoxesToConsume, FText& OutFailureReason);
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Research")
 	void BroadcastCurrentResearchState() const;
@@ -95,7 +107,7 @@ private:
 	void SaveProgress();
 	void BroadcastQueueChanged() const;
 	void BroadcastToyBoxQueued(const FTTDCraftQueueItem& QueueItem) const;
-	void BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts, const TArray<FTTDNameStack>& GrantedParts) const;
+	void BroadcastToyBoxClaimed(const FTTDCraftQueueItem& QueueItem, const TArray<FTTDPartDefinition>& NewlyUnlockedParts, const TArray<FTTDNameStack>& GrantedParts, const TArray<FTTDNameStack>& GrantedToyBoxes) const;
 	void BroadcastCollectionChanged() const;
 	void BroadcastInventoryChanged() const;
 
@@ -108,5 +120,8 @@ private:
 	bool HasPartCosts(const TArray<FTTDNameStack>& PartCosts, FText& OutFailureReason) const;
 	void ApplyPartCosts(const TArray<FTTDNameStack>& PartCosts);
 	void AddPartCount(FName PartId, int32 Count);
+	void AddToyBoxCount(FName ToyBoxId, int32 Count);
+	void ApplyToyBoxCosts(const TArray<FTTDNameStack>& ToyBoxCosts);
 	void NormalizePartInventory();
+	void NormalizeToyBoxInventory();
 };

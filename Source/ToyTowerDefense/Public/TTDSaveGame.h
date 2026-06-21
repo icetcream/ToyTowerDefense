@@ -11,7 +11,7 @@ class TOYTOWERDEFENSE_API UTTDSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
-	static constexpr int32 CurrentSaveVersion = 2;
+	static constexpr int32 CurrentSaveVersion = 3;
 
 	UPROPERTY()
 	int32 SaveVersion = 0;
@@ -27,6 +27,9 @@ public:
 
 	UPROPERTY()
 	TArray<FTTDNameStack> PartInventory;
+
+	UPROPERTY()
+	TArray<FTTDNameStack> ToyBoxInventory;
 
 	UPROPERTY()
 	TArray<FTTDCraftQueueItem> CraftingQueue;

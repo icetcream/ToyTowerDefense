@@ -95,7 +95,25 @@ public:
 	bool TryBuildOnSlot(FName BuildingId, ATTDBuildSlotActor* Slot, FText& OutFailureReason);
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	bool TryBuildAtLocation(FName BuildingId, FVector Location, FText& OutFailureReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	bool BuyToyBox(FName ToyBoxId, FText& OutFailureReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	bool BuyBuildingCapacity(FText& OutFailureReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	bool BuyBuildingLevelCap(FText& OutFailureReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	bool CanUpgradeBuilding(ATTDBattleBuildingActor* Building, FName PartId, FText& OutFailureReason) const;
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	bool UpgradeBuilding(ATTDBattleBuildingActor* Building, FName PartId, FText& OutFailureReason);
+
+	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
+	bool SellBuilding(ATTDBattleBuildingActor* Building, FText& OutFailureReason);
 
 	UFUNCTION(BlueprintCallable, Category = "Toy Tower Defense|Battle")
 	bool OpenToyBox(FName ToyBoxId, TArray<FTTDNameStack>& OutRewards, FText& OutFailureReason);
@@ -128,6 +146,21 @@ public:
 	int32 GetCurrency() const { return Currency; }
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetBuildingCount() const { return ActiveBuildings.Num(); }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetBuildingCapacity() const { return BuildingCapacity; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetBuildingCapacityPurchaseCost() const { return BuildingCapacityPurchaseCost; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetBuildingLevelCap() const { return BuildingLevelCap; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetBuildingLevelCapPurchaseCost() const { return BuildingLevelCapPurchaseCost; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	float GetCastleCurrentHealth() const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
@@ -141,6 +174,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	bool IsBuildingAvailable(FName BuildingId) const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	bool CanBuildBuilding(FName BuildingId, FText& OutFailureReason) const;
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	bool IsActiveBuilding(ATTDBattleBuildingActor* Building) const;
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	TArray<FTTDToyBoxRewardDefinition> GetToyBoxDefinitions() const;
@@ -194,6 +233,7 @@ public:
 	const FTTDBuildingDefinition* FindBuildingDefinition(FName BuildingId) const;
 	const FTTDToyBoxRewardDefinition* FindToyBoxDefinition(FName ToyBoxId) const;
 	FTTDBattleBuildingRuntimeStats BuildRuntimeStatsForSlot(const FTTDBuildingDefinition& BuildingDefinition, const ATTDBuildSlotActor* Slot) const;
+	FTTDBattleBuildingRuntimeStats ApplyUpgradeModifiers(FTTDBattleBuildingRuntimeStats RuntimeStats, const TArray<FTTDBattleAttributeModifier>& Modifiers) const;
 
 private:
 	UPROPERTY(Transient)
@@ -265,6 +305,12 @@ private:
 	float VictoryReturnDelaySeconds = 5.0f;
 	float VictoryReturnReadySeconds = 0.0f;
 	int32 Currency = 0;
+	int32 BuildingCapacity = 0;
+	int32 BuildingCapacityPurchaseCost = 0;
+	int32 BuildingLevelCap = 1;
+	int32 BuildingLevelCapPurchaseCost = 0;
+	bool bAllowArbitraryBuildPlacement = true;
+	float ArbitraryBuildMinSpacing = 180.0f;
 	int32 BattleInstanceId = 0;
 	int32 CurrentWaveIndex = INDEX_NONE;
 	bool bBroadcastedInitialState = false;
@@ -303,6 +349,11 @@ private:
 	void ApplyPartCosts(const TArray<FTTDNameStack>& PartCosts);
 	void AddPartCount(FName PartId, int32 Count);
 	void AddToyBoxCount(FName ToyBoxId, int32 Count);
+	bool IsBuildLocationAvailable(FVector Location, FText& OutFailureReason) const;
+	ATTDBuildSlotActor* CreateRuntimeBuildSlot(FVector Location);
+	const FTTDBattleBuildingUpgradeOption* FindBuildingUpgradeOption(const FTTDBuildingDefinition& BuildingDefinition, FName PartId) const;
+	bool HasPartCount(FName PartId, int32 Count) const;
+	void NormalizeRuntimeStats(FTTDBattleBuildingRuntimeStats& RuntimeStats) const;
 	void BroadcastStateChanged() const;
 	void BroadcastProgressChanged() const;
 	void BroadcastCurrencyChanged() const;

@@ -247,6 +247,12 @@ bool UTTDBattleWorldSubsystem::StartBattleInternal(const FName LevelId, const FT
 	BattlePhase = ETTDBattlePhase::None;
 	BattleElapsedSeconds = 0.0f;
 	Currency = FMath::Max(0, LevelDefinition->StartingCurrency);
+	BuildingCapacity = FMath::Max(0, LevelDefinition->StartingBuildingCapacity);
+	BuildingCapacityPurchaseCost = FMath::Max(0, LevelDefinition->BuildingCapacityPurchaseCost);
+	BuildingLevelCap = FMath::Max(1, LevelDefinition->StartingBuildingLevelCap);
+	BuildingLevelCapPurchaseCost = FMath::Max(0, LevelDefinition->BuildingLevelCapPurchaseCost);
+	bAllowArbitraryBuildPlacement = LevelDefinition->bAllowArbitraryBuildPlacement;
+	ArbitraryBuildMinSpacing = FMath::Max(0.0f, LevelDefinition->ArbitraryBuildMinSpacing);
 	TotalEnemyWeight = 0.0f;
 	RemainingUnspawnedWeight = 0.0f;
 	AliveEnemyWeight = 0.0f;
@@ -375,24 +381,13 @@ bool UTTDBattleWorldSubsystem::TryBuildOnSlot(const FName BuildingId, ATTDBuildS
 		return false;
 	}
 
+	if (!CanBuildBuilding(BuildingId, OutFailureReason))
+	{
+		return false;
+	}
+
 	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(BuildingId);
-	if (!BuildingDefinition)
-	{
-		OutFailureReason = BattleText(TEXT("建筑未配置。"));
-		return false;
-	}
-
-	if (!BuildingDefinition->RequiredDiagramId.IsNone() && !DiagramIds.Contains(BuildingDefinition->RequiredDiagramId))
-	{
-		OutFailureReason = BattleText(TEXT("缺少所需图纸。"));
-		return false;
-	}
-
-	if (!HasPartCosts(BuildingDefinition->PartCosts))
-	{
-		OutFailureReason = BattleText(TEXT("零件不足。"));
-		return false;
-	}
+	check(BuildingDefinition);
 
 	UClass* BuildingClass = BuildingDefinition->BuildingClass.LoadSynchronous();
 	if (!BuildingClass)
@@ -416,13 +411,56 @@ bool UTTDBattleWorldSubsystem::TryBuildOnSlot(const FName BuildingId, ATTDBuildS
 
 	ApplyPartCosts(BuildingDefinition->PartCosts);
 	const FTTDBattleBuildingRuntimeStats RuntimeStats = BuildRuntimeStatsForSlot(*BuildingDefinition, Slot);
-	Building->InitializeBuilding(BuildingId, *BuildingDefinition, RuntimeStats, Slot);
+	Building->InitializeBuilding(BuildingId, *BuildingDefinition, RuntimeStats, BuildingDefinition->PartCosts, Slot);
 	Slot->SetOccupyingBuilding(Building);
 	ActiveBuildings.Add(Building);
 	RegisterBattleTarget(Building);
 
 	BroadcastInventoryChanged();
 	BroadcastBuildingPlaced(BuildingId, Slot->GetSlotId());
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::TryBuildAtLocation(const FName BuildingId, FVector Location, FText& OutFailureReason)
+{
+	OutFailureReason = FText::GetEmpty();
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	if (!bAllowArbitraryBuildPlacement)
+	{
+		OutFailureReason = BattleText(TEXT("当前关卡未启用任意位置建造。"));
+		return false;
+	}
+
+	if (!CanBuildBuilding(BuildingId, OutFailureReason))
+	{
+		return false;
+	}
+
+	if (!IsBuildLocationAvailable(Location, OutFailureReason))
+	{
+		return false;
+	}
+
+	Location.Z = 0.0f;
+	ATTDBuildSlotActor* RuntimeSlot = CreateRuntimeBuildSlot(Location);
+	if (!RuntimeSlot)
+	{
+		OutFailureReason = BattleText(TEXT("运行时建造位生成失败。"));
+		return false;
+	}
+
+	if (!TryBuildOnSlot(BuildingId, RuntimeSlot, OutFailureReason))
+	{
+		BuildSlots.Remove(RuntimeSlot);
+		RuntimeSlot->Destroy();
+		return false;
+	}
+
 	return true;
 }
 
@@ -446,6 +484,163 @@ bool UTTDBattleWorldSubsystem::BuyToyBox(const FName ToyBoxId, FText& OutFailure
 	Currency -= ToyBoxDefinition->PurchaseCost;
 	AddToyBoxCount(NormalizedToyBoxId, 1);
 	BroadcastCurrencyChanged();
+	BroadcastInventoryChanged();
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::BuyBuildingCapacity(FText& OutFailureReason)
+{
+	OutFailureReason = FText::GetEmpty();
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	if (BuildingCapacity <= 0)
+	{
+		OutFailureReason = BattleText(TEXT("当前关卡未启用建筑数量上限。"));
+		return false;
+	}
+
+	if (Currency < BuildingCapacityPurchaseCost)
+	{
+		OutFailureReason = BattleText(TEXT("货币不足。"));
+		return false;
+	}
+
+	Currency -= BuildingCapacityPurchaseCost;
+	++BuildingCapacity;
+	BroadcastCurrencyChanged();
+	BroadcastInventoryChanged();
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::BuyBuildingLevelCap(FText& OutFailureReason)
+{
+	OutFailureReason = FText::GetEmpty();
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	if (BuildingLevelCapPurchaseCost <= 0)
+	{
+		OutFailureReason = BattleText(TEXT("当前关卡未配置等级上限商品。"));
+		return false;
+	}
+
+	if (Currency < BuildingLevelCapPurchaseCost)
+	{
+		OutFailureReason = BattleText(TEXT("货币不足。"));
+		return false;
+	}
+
+	Currency -= BuildingLevelCapPurchaseCost;
+	++BuildingLevelCap;
+	BroadcastCurrencyChanged();
+	BroadcastInventoryChanged();
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::CanUpgradeBuilding(ATTDBattleBuildingActor* Building, const FName PartId, FText& OutFailureReason) const
+{
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	if (!IsActiveBuilding(Building))
+	{
+		OutFailureReason = BattleText(TEXT("建筑无效。"));
+		return false;
+	}
+
+	if (Building->GetBuildingLevel() >= BuildingLevelCap)
+	{
+		OutFailureReason = BattleText(TEXT("建筑已达到当前等级上限。"));
+		return false;
+	}
+
+	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(Building->GetBuildingId());
+	if (!BuildingDefinition)
+	{
+		OutFailureReason = BattleText(TEXT("建筑未配置。"));
+		return false;
+	}
+
+	const FTTDBattleBuildingUpgradeOption* UpgradeOption = FindBuildingUpgradeOption(*BuildingDefinition, PartId);
+	if (!UpgradeOption)
+	{
+		OutFailureReason = BattleText(TEXT("该零件不能升级这个建筑。"));
+		return false;
+	}
+
+	if (!HasPartCount(UpgradeOption->PartId, FMath::Max(1, UpgradeOption->PartCost)))
+	{
+		OutFailureReason = BattleText(TEXT("升级零件不足。"));
+		return false;
+	}
+
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::UpgradeBuilding(ATTDBattleBuildingActor* Building, const FName PartId, FText& OutFailureReason)
+{
+	if (!CanUpgradeBuilding(Building, PartId, OutFailureReason))
+	{
+		return false;
+	}
+
+	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(Building->GetBuildingId());
+	check(BuildingDefinition);
+	const FTTDBattleBuildingUpgradeOption* UpgradeOption = FindBuildingUpgradeOption(*BuildingDefinition, PartId);
+	check(UpgradeOption);
+
+	const int32 PartCost = FMath::Max(1, UpgradeOption->PartCost);
+	TArray<FTTDNameStack> UpgradeCost;
+	UpgradeCost.Add(FTTDNameStack(UpgradeOption->PartId, PartCost));
+	ApplyPartCosts(UpgradeCost);
+	FTTDBattleBuildingRuntimeStats RuntimeStats = ApplyUpgradeModifiers(Building->GetRuntimeStats(), UpgradeOption->Modifiers);
+	NormalizeRuntimeStats(RuntimeStats);
+	Building->ApplyRuntimeStats(RuntimeStats);
+	Building->IncrementLevel();
+	Building->AddUpgradePartCost(UpgradeOption->PartId, PartCost);
+	BroadcastInventoryChanged();
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::SellBuilding(ATTDBattleBuildingActor* Building, FText& OutFailureReason)
+{
+	OutFailureReason = FText::GetEmpty();
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	if (!IsActiveBuilding(Building))
+	{
+		OutFailureReason = BattleText(TEXT("建筑无效。"));
+		return false;
+	}
+
+	if (ATTDBuildSlotActor* Slot = Building->GetOwningSlot())
+	{
+		Slot->ClearOccupyingBuilding(Building);
+	}
+
+	for (const FTTDNameStack& ConstructionCost : Building->GetConstructionPartCosts())
+	{
+		AddPartCount(ConstructionCost.Id, ConstructionCost.Count);
+	}
+
+	ActiveBuildings.Remove(Building);
+	UnregisterBattleTarget(Building);
+	ReleaseBattleActor(Building);
 	BroadcastInventoryChanged();
 	return true;
 }
@@ -556,6 +751,17 @@ bool UTTDBattleWorldSubsystem::ApplyTestCheatSupplies(FText& OutSummary)
 			AddPartCount(PartCost.Id, Quantity);
 			++AddedPartStackCount;
 		}
+
+		for (const FTTDBattleBuildingUpgradeOption& UpgradeOption : BuildingDefinition.UpgradeOptions)
+		{
+			if (UpgradeOption.PartId.IsNone())
+			{
+				continue;
+			}
+
+			AddPartCount(UpgradeOption.PartId, FMath::Max(10, FMath::Max(1, UpgradeOption.PartCost) * 10));
+			++AddedPartStackCount;
+		}
 	}
 
 	for (const TPair<FName, FTTDToyBoxRewardDefinition>& Pair : ToyBoxRewardDefinitions)
@@ -636,6 +842,48 @@ bool UTTDBattleWorldSubsystem::IsBuildingAvailable(const FName BuildingId) const
 	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(BuildingId);
 	return BuildingDefinition
 		&& (BuildingDefinition->RequiredDiagramId.IsNone() || DiagramIds.Contains(BuildingDefinition->RequiredDiagramId));
+}
+
+bool UTTDBattleWorldSubsystem::CanBuildBuilding(const FName BuildingId, FText& OutFailureReason) const
+{
+	if (BattleState != ETTDBattleState::Running)
+	{
+		OutFailureReason = BattleText(TEXT("战斗尚未进行。"));
+		return false;
+	}
+
+	if (BuildingCapacity > 0 && ActiveBuildings.Num() >= BuildingCapacity)
+	{
+		OutFailureReason = BattleText(TEXT("建筑数量已达上限。"));
+		return false;
+	}
+
+	const FTTDBuildingDefinition* BuildingDefinition = BuildingDefinitions.Find(BuildingId);
+	if (!BuildingDefinition)
+	{
+		OutFailureReason = BattleText(TEXT("建筑未配置。"));
+		return false;
+	}
+
+	if (!BuildingDefinition->RequiredDiagramId.IsNone() && !DiagramIds.Contains(BuildingDefinition->RequiredDiagramId))
+	{
+		OutFailureReason = BattleText(TEXT("缺少所需图纸。"));
+		return false;
+	}
+
+	if (!HasPartCosts(BuildingDefinition->PartCosts))
+	{
+		OutFailureReason = BattleText(TEXT("零件不足。"));
+		return false;
+	}
+
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
+bool UTTDBattleWorldSubsystem::IsActiveBuilding(ATTDBattleBuildingActor* Building) const
+{
+	return IsValid(Building) && ActiveBuildings.Contains(Building);
 }
 
 TArray<FTTDToyBoxRewardDefinition> UTTDBattleWorldSubsystem::GetToyBoxDefinitions() const
@@ -762,6 +1010,8 @@ void UTTDBattleWorldSubsystem::HandleBuildingDestroyed(ATTDBattleBuildingActor* 
 	{
 		DestroyedBuilding->Destroy();
 	}
+
+	BroadcastInventoryChanged();
 }
 
 void UTTDBattleWorldSubsystem::HandleEnemyKilled(ATTDBattleEnemyActor* Enemy)
@@ -883,16 +1133,25 @@ FTTDBattleBuildingRuntimeStats UTTDBattleWorldSubsystem::BuildRuntimeStatsForSlo
 	FTTDBattleBuildingRuntimeStats RuntimeStats = BuildingDefinition.BaseStats;
 	if (!Slot || Slot->GetHeightEffectId().IsNone())
 	{
+		NormalizeRuntimeStats(RuntimeStats);
 		return RuntimeStats;
 	}
 
 	const FTTDBattleHeightEffectDefinition* HeightEffect = HeightEffectDefinitions.Find(Slot->GetHeightEffectId());
 	if (!HeightEffect)
 	{
+		NormalizeRuntimeStats(RuntimeStats);
 		return RuntimeStats;
 	}
 
-	for (const FTTDBattleAttributeModifier& Modifier : HeightEffect->Modifiers)
+	RuntimeStats = ApplyUpgradeModifiers(RuntimeStats, HeightEffect->Modifiers);
+	NormalizeRuntimeStats(RuntimeStats);
+	return RuntimeStats;
+}
+
+FTTDBattleBuildingRuntimeStats UTTDBattleWorldSubsystem::ApplyUpgradeModifiers(FTTDBattleBuildingRuntimeStats RuntimeStats, const TArray<FTTDBattleAttributeModifier>& Modifiers) const
+{
+	for (const FTTDBattleAttributeModifier& Modifier : Modifiers)
 	{
 		switch (Modifier.Attribute)
 		{
@@ -919,12 +1178,7 @@ FTTDBattleBuildingRuntimeStats UTTDBattleWorldSubsystem::BuildRuntimeStatsForSlo
 		}
 	}
 
-	RuntimeStats.MaxHealth = FMath::Max(1.0f, RuntimeStats.MaxHealth);
-	RuntimeStats.AttackDamage = FMath::Max(0.0f, RuntimeStats.AttackDamage);
-	RuntimeStats.AttackRange = FMath::Max(0.0f, RuntimeStats.AttackRange);
-	RuntimeStats.AttackInterval = FMath::Max(0.01f, RuntimeStats.AttackInterval);
-	RuntimeStats.ProjectileSpeed = FMath::Max(1.0f, RuntimeStats.ProjectileSpeed);
-	RuntimeStats.MoveSpeed = FMath::Max(0.0f, RuntimeStats.MoveSpeed);
+	NormalizeRuntimeStats(RuntimeStats);
 	return RuntimeStats;
 }
 
@@ -1058,7 +1312,10 @@ void UTTDBattleWorldSubsystem::GatherPlacedActors()
 
 	for (TActorIterator<ATTDBuildSlotActor> It(World); It; ++It)
 	{
-		BuildSlots.Add(*It);
+		if (!It->IsRuntimeGeneratedSlot())
+		{
+			BuildSlots.Add(*It);
+		}
 	}
 }
 
@@ -1089,7 +1346,7 @@ bool UTTDBattleWorldSubsystem::ValidateLevelDefinition(const FName LevelId, cons
 		return false;
 	}
 
-	if (BuildSlots.IsEmpty())
+	if (BuildSlots.IsEmpty() && !LevelDefinition.bAllowArbitraryBuildPlacement)
 	{
 		OutFailureReason = BattleText(TEXT("战斗关卡需要场景中至少有一个建造位。"));
 		return false;
@@ -1309,6 +1566,14 @@ void UTTDBattleWorldSubsystem::CleanupBattle()
 	}
 
 	ActiveBackgroundActor = nullptr;
+	for (ATTDBuildSlotActor* Slot : BuildSlots)
+	{
+		if (IsValid(Slot) && Slot->IsRuntimeGeneratedSlot())
+		{
+			Slot->Destroy();
+		}
+	}
+
 	SpawnPoints.Reset();
 	BuildSlots.Reset();
 	BattleTargets.Reset();
@@ -1327,6 +1592,12 @@ void UTTDBattleWorldSubsystem::CleanupBattle()
 	FrozenProgress = 0.0f;
 	VictoryReturnReadySeconds = 0.0f;
 	Currency = 0;
+	BuildingCapacity = 0;
+	BuildingCapacityPurchaseCost = 0;
+	BuildingLevelCap = 1;
+	BuildingLevelCapPurchaseCost = 0;
+	bAllowArbitraryBuildPlacement = true;
+	ArbitraryBuildMinSpacing = 180.0f;
 	CurrentWaveIndex = INDEX_NONE;
 	bUseFrozenProgress = false;
 	bPostBattleReturnReady = false;
@@ -1673,6 +1944,108 @@ void UTTDBattleWorldSubsystem::AddToyBoxCount(const FName ToyBoxId, const int32 
 	{
 		ToyBoxCounts.FindOrAdd(NormalizedToyBoxId) += Count;
 	}
+}
+
+bool UTTDBattleWorldSubsystem::IsBuildLocationAvailable(const FVector Location, FText& OutFailureReason) const
+{
+	if (ActiveBackgroundActor)
+	{
+		const FTTDBattleBackgroundDefinition& BackgroundDefinition = ActiveBackgroundActor->GetBackgroundDefinition();
+		const FVector BackgroundLocation = ActiveBackgroundActor->GetActorLocation();
+		const FVector2D HalfExtent(
+			FMath::Max(100.0f, BackgroundDefinition.ArenaHalfExtent.X),
+			FMath::Max(100.0f, BackgroundDefinition.ArenaHalfExtent.Y));
+		if (Location.X < BackgroundLocation.X - HalfExtent.X
+			|| Location.X > BackgroundLocation.X + HalfExtent.X
+			|| Location.Y < BackgroundLocation.Y - HalfExtent.Y
+			|| Location.Y > BackgroundLocation.Y + HalfExtent.Y)
+		{
+			OutFailureReason = BattleText(TEXT("建造位置超出战场范围。"));
+			return false;
+		}
+	}
+
+	const float MinSpacingSquared = FMath::Square(FMath::Max(0.0f, ArbitraryBuildMinSpacing));
+	for (const ATTDBuildSlotActor* Slot : BuildSlots)
+	{
+		if (!IsValid(Slot) || !Slot->IsOccupied())
+		{
+			continue;
+		}
+
+		if (FVector::DistSquared2D(Location, Slot->GetActorLocation()) < MinSpacingSquared)
+		{
+			OutFailureReason = BattleText(TEXT("建造位置离已有建筑太近。"));
+			return false;
+		}
+	}
+
+	for (const ATTDBattleBuildingActor* Building : ActiveBuildings)
+	{
+		if (IsValid(Building) && FVector::DistSquared2D(Location, Building->GetActorLocation()) < MinSpacingSquared)
+		{
+			OutFailureReason = BattleText(TEXT("建造位置离已有建筑太近。"));
+			return false;
+		}
+	}
+
+	OutFailureReason = FText::GetEmpty();
+	return true;
+}
+
+ATTDBuildSlotActor* UTTDBattleWorldSubsystem::CreateRuntimeBuildSlot(FVector Location)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return nullptr;
+	}
+
+	Location.Z = 0.0f;
+	FActorSpawnParameters SpawnParameters;
+	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ATTDBuildSlotActor* RuntimeSlot = World->SpawnActor<ATTDBuildSlotActor>(ATTDBuildSlotActor::StaticClass(), Location, FRotator::ZeroRotator, SpawnParameters);
+	if (!RuntimeSlot)
+	{
+		return nullptr;
+	}
+
+	RuntimeSlot->ConfigureSlot(
+		FName(*FString::Printf(TEXT("RuntimeSlot_%d"), BuildSlots.Num())),
+		FIntPoint(FMath::RoundToInt(Location.X), FMath::RoundToInt(Location.Y)),
+		0,
+		NAME_None);
+	RuntimeSlot->MarkRuntimeGeneratedSlot();
+	BuildSlots.Add(RuntimeSlot);
+	return RuntimeSlot;
+}
+
+const FTTDBattleBuildingUpgradeOption* UTTDBattleWorldSubsystem::FindBuildingUpgradeOption(const FTTDBuildingDefinition& BuildingDefinition, const FName PartId) const
+{
+	for (const FTTDBattleBuildingUpgradeOption& UpgradeOption : BuildingDefinition.UpgradeOptions)
+	{
+		if (!UpgradeOption.PartId.IsNone() && UpgradeOption.PartId == PartId)
+		{
+			return &UpgradeOption;
+		}
+	}
+
+	return nullptr;
+}
+
+bool UTTDBattleWorldSubsystem::HasPartCount(const FName PartId, const int32 Count) const
+{
+	return !PartId.IsNone() && Count > 0 && PartCounts.FindRef(PartId) >= Count;
+}
+
+void UTTDBattleWorldSubsystem::NormalizeRuntimeStats(FTTDBattleBuildingRuntimeStats& RuntimeStats) const
+{
+	RuntimeStats.MaxHealth = FMath::Max(1.0f, RuntimeStats.MaxHealth);
+	RuntimeStats.AttackDamage = FMath::Max(0.0f, RuntimeStats.AttackDamage);
+	RuntimeStats.AttackRange = FMath::Max(0.0f, RuntimeStats.AttackRange);
+	RuntimeStats.AttackInterval = FMath::Max(0.01f, RuntimeStats.AttackInterval);
+	RuntimeStats.ProjectileSpeed = FMath::Max(1.0f, RuntimeStats.ProjectileSpeed);
+	RuntimeStats.MoveSpeed = FMath::Max(0.0f, RuntimeStats.MoveSpeed);
 }
 
 void UTTDBattleWorldSubsystem::BroadcastStateChanged() const

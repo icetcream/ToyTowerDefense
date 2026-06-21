@@ -330,9 +330,7 @@ void UTTDBattleLevelSelectWidget::LoadData()
 		if (BattleSubsystem && BattleSubsystem->FindToyBoxDefinition(Entry.ItemId))
 		{
 			ToyBoxEntries.Add(Entry);
-			// Research save currently stores unlocked toy box types, not owned box stacks.
-			// Treat unlocked boxes as temporary loadout stock until a persistent box inventory is added.
-			BaseToyBoxStock.Add(Entry.ItemId, FMath::Max(0, SelectedLevelDefinition.MaxSelectedToyBoxes));
+			BaseToyBoxStock.Add(Entry.ItemId, ResearchSubsystem->GetToyBoxCount(Entry.ItemId));
 		}
 	}
 }

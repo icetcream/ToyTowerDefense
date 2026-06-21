@@ -43,6 +43,11 @@ void ATTDBuildSlotActor::ConfigureSlot(const FName InSlotId, const FIntPoint InG
 	ApplyVisualMaterial();
 }
 
+void ATTDBuildSlotActor::MarkRuntimeGeneratedSlot()
+{
+	bRuntimeGeneratedSlot = true;
+}
+
 void ATTDBuildSlotActor::SetOccupyingBuilding(AActor* Building)
 {
 	OccupyingBuilding = Building;

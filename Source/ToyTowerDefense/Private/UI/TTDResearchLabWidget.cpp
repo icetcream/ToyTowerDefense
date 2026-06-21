@@ -772,9 +772,7 @@ void UTTDResearchLabWidget::ClaimQueueItem(const FGuid QueueId)
 
 		if (bClaimed)
 		{
-			LastFeedback = NewParts.Num() > 0
-				? FText::Format(FText::FromString(TEXT("制作完成，发现 {0} 个新零件，库存已增加。")), FText::AsNumber(NewParts.Num()))
-				: FText::FromString(TEXT("制作完成，库存已增加。"));
+			LastFeedback = FText::FromString(TEXT("制作完成，玩具盒库存已增加。"));
 		}
 	}
 

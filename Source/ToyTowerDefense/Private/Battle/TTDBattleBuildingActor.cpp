@@ -18,7 +18,9 @@ ATTDBattleBuildingActor::ATTDBattleBuildingActor()
 
 	VisualMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("VisualMesh"));
 	VisualMesh->SetupAttachment(SceneRoot);
-	VisualMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	VisualMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	VisualMesh->SetCollisionResponseToAllChannels(ECR_Ignore);
+	VisualMesh->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	VisualMesh->SetRelativeLocation(FVector(0.0f, 0.0f, 50.0f));
 	VisualMesh->SetRelativeScale3D(FVector(0.8f, 0.8f, 1.0f));
 
@@ -45,16 +47,60 @@ void ATTDBattleBuildingActor::InitializeBuilding(
 	const FName InBuildingId,
 	const FTTDBuildingDefinition& Definition,
 	const FTTDBattleBuildingRuntimeStats& InRuntimeStats,
+	const TArray<FTTDNameStack>& InConstructionPartCosts,
 	ATTDBuildSlotActor* InOwningSlot)
 {
 	BuildingId = InBuildingId;
+	DisplayName = Definition.DisplayName;
 	AttackMode = Definition.AttackMode;
 	RuntimeStats = InRuntimeStats;
 	ProjectileClass = Definition.ProjectileClass;
+	ConstructionPartCosts = InConstructionPartCosts;
+	UpgradePartCosts.Reset();
 	OwningSlot = InOwningSlot;
 	CurrentHealth = FMath::Max(1.0f, RuntimeStats.MaxHealth);
 	AttackAccumulator = RuntimeStats.AttackInterval;
+	BuildingLevel = 1;
 	RefreshVisualState();
+}
+
+void ATTDBattleBuildingActor::ApplyRuntimeStats(const FTTDBattleBuildingRuntimeStats& InRuntimeStats)
+{
+	const float OldMaxHealth = FMath::Max(1.0f, RuntimeStats.MaxHealth);
+	const float HealthPercent = OldMaxHealth > 0.0f ? FMath::Clamp(CurrentHealth / OldMaxHealth, 0.0f, 1.0f) : 1.0f;
+	RuntimeStats = InRuntimeStats;
+	RuntimeStats.MaxHealth = FMath::Max(1.0f, RuntimeStats.MaxHealth);
+	RuntimeStats.AttackDamage = FMath::Max(0.0f, RuntimeStats.AttackDamage);
+	RuntimeStats.AttackRange = FMath::Max(0.0f, RuntimeStats.AttackRange);
+	RuntimeStats.AttackInterval = FMath::Max(0.01f, RuntimeStats.AttackInterval);
+	RuntimeStats.ProjectileSpeed = FMath::Max(1.0f, RuntimeStats.ProjectileSpeed);
+	RuntimeStats.MoveSpeed = FMath::Max(0.0f, RuntimeStats.MoveSpeed);
+	CurrentHealth = FMath::Max(1.0f, RuntimeStats.MaxHealth * HealthPercent);
+	AttackAccumulator = FMath::Min(AttackAccumulator, RuntimeStats.AttackInterval);
+}
+
+void ATTDBattleBuildingActor::IncrementLevel()
+{
+	++BuildingLevel;
+}
+
+void ATTDBattleBuildingActor::AddUpgradePartCost(const FName PartId, const int32 Count)
+{
+	if (PartId.IsNone() || Count <= 0)
+	{
+		return;
+	}
+
+	for (FTTDNameStack& ExistingCost : UpgradePartCosts)
+	{
+		if (ExistingCost.Id == PartId)
+		{
+			ExistingCost.Count += Count;
+			return;
+		}
+	}
+
+	UpgradePartCosts.Add(FTTDNameStack(PartId, Count));
 }
 
 FVector ATTDBattleBuildingActor::GetBattleTargetLocation_Implementation() const
@@ -98,9 +144,14 @@ void ATTDBattleBuildingActor::OnAcquireFromPool_Implementation(const FTransform&
 void ATTDBattleBuildingActor::OnReleaseToPool_Implementation()
 {
 	SetActorTickEnabled(false);
+	BuildingId = NAME_None;
+	DisplayName = FText::GetEmpty();
 	CurrentHealth = 0.0f;
 	OwningSlot.Reset();
+	ConstructionPartCosts.Reset();
+	UpgradePartCosts.Reset();
 	AttackAccumulator = 0.0f;
+	BuildingLevel = 1;
 }
 
 void ATTDBattleBuildingActor::TryAttack(const float DeltaSeconds)

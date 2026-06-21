@@ -57,7 +57,13 @@ struct FTTDToyBoxClaimedMessage
 	TArray<FTTDNameStack> GrantedParts;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	TArray<FTTDNameStack> GrantedToyBoxes;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
 	TArray<FTTDNameStack> PartInventory;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	TArray<FTTDNameStack> ToyBoxInventory;
 };
 
 USTRUCT(BlueprintType)
@@ -82,6 +88,9 @@ struct FTTDResearchInventoryChangedMessage
 
 	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
 	TArray<FTTDNameStack> PartInventory;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Toy Tower Defense|Messaging")
+	TArray<FTTDNameStack> ToyBoxInventory;
 };
 
 USTRUCT(BlueprintType)

@@ -156,6 +156,7 @@ void UTTDWarehouseWidget::RefreshContent()
 	}
 
 	AddPartInventorySection(*ResearchSubsystem);
+	AddToyBoxInventorySection(*ResearchSubsystem);
 	AddCollectionSection(FText::FromString(TEXT("已解锁图纸")), ResearchSubsystem->GetCollectionEntries(ETTDCollectionCategory::Diagram), TEXT("暂无已解锁图纸"));
 	AddCollectionSection(FText::FromString(TEXT("已解锁玩具盒")), ResearchSubsystem->GetCollectionEntries(ETTDCollectionCategory::ToyBox), TEXT("暂无已解锁玩具盒"));
 }
@@ -190,6 +191,47 @@ void UTTDWarehouseWidget::AddPartInventorySection(const UTTDResearchSubsystem& R
 				FText::Format(
 					FText::FromString(TEXT("{0}\nx{1}")),
 					TTDUIDisplayNames::PartName(GetGameInstance(), Stack.Id),
+					FText::AsNumber(Stack.Count)),
+				17,
+				TTDUIStyle::Ink(),
+				ETextJustify::Center));
+			Grid->AddChildToUniformGrid(Card, Index / 4, Index % 4);
+		}
+	}
+}
+
+void UTTDWarehouseWidget::AddToyBoxInventorySection(const UTTDResearchSubsystem& ResearchSubsystem)
+{
+	UBorder* SectionPanel = MakeWarehousePanel(WidgetTree, TTDUIStyle::Cream(), FMargin(18.0f));
+	UVerticalBoxSlot* SectionSlot = ContentBox->AddChildToVerticalBox(SectionPanel);
+	SectionSlot->SetPadding(FMargin(0.0f, 16.0f, 0.0f, 0.0f));
+
+	UVerticalBox* SectionBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	SectionPanel->AddChild(SectionBox);
+	SectionBox->AddChildToVerticalBox(MakeWarehouseText(WidgetTree, FText::FromString(TEXT("玩具盒库存")), 22, TTDUIStyle::Ink()));
+
+	UUniformGridPanel* Grid = WidgetTree->ConstructWidget<UUniformGridPanel>(UUniformGridPanel::StaticClass());
+	UVerticalBoxSlot* GridSlot = SectionBox->AddChildToVerticalBox(Grid);
+	GridSlot->SetPadding(FMargin(0.0f, 12.0f, 0.0f, 0.0f));
+
+	const TArray<FTTDNameStack> Stacks = ResearchSubsystem.GetToyBoxInventory();
+	if (Stacks.IsEmpty())
+	{
+		Grid->AddChildToUniformGrid(MakeWarehouseText(WidgetTree, FText::FromString(TEXT("暂无玩具盒")), 17, TTDUIStyle::MutedInk()), 0, 0);
+		return;
+	}
+
+	for (int32 Index = 0; Index < Stacks.Num(); ++Index)
+	{
+		const FTTDNameStack& Stack = Stacks[Index];
+		if (!Stack.Id.IsNone() && Stack.Count > 0)
+		{
+			UBorder* Card = MakeWarehousePanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(14.0f, 10.0f));
+			Card->AddChild(MakeWarehouseText(
+				WidgetTree,
+				FText::Format(
+					FText::FromString(TEXT("{0}\nx{1}")),
+					TTDUIDisplayNames::ToyBoxName(GetGameInstance(), Stack.Id),
 					FText::AsNumber(Stack.Count)),
 				17,
 				TTDUIStyle::Ink(),

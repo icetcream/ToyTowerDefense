@@ -23,16 +23,37 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void OnConstruction(const FTransform& Transform) override;
 
-	void InitializeBuilding(FName InBuildingId, const FTTDBuildingDefinition& Definition, const FTTDBattleBuildingRuntimeStats& InRuntimeStats, ATTDBuildSlotActor* InOwningSlot);
+	void InitializeBuilding(
+		FName InBuildingId,
+		const FTTDBuildingDefinition& Definition,
+		const FTTDBattleBuildingRuntimeStats& InRuntimeStats,
+		const TArray<FTTDNameStack>& InConstructionPartCosts,
+		ATTDBuildSlotActor* InOwningSlot);
+
+	void ApplyRuntimeStats(const FTTDBattleBuildingRuntimeStats& InRuntimeStats);
+	void IncrementLevel();
+	void AddUpgradePartCost(FName PartId, int32 Count);
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	FName GetBuildingId() const { return BuildingId; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	FText GetDisplayName() const { return DisplayName; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	int32 GetBuildingLevel() const { return BuildingLevel; }
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	FTTDBattleBuildingRuntimeStats GetRuntimeStats() const { return RuntimeStats; }
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	float GetCurrentHealth() const { return CurrentHealth; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	TArray<FTTDNameStack> GetConstructionPartCosts() const { return ConstructionPartCosts; }
+
+	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
+	TArray<FTTDNameStack> GetUpgradePartCosts() const { return UpgradePartCosts; }
 
 	UFUNCTION(BlueprintPure, Category = "Toy Tower Defense|Battle")
 	ATTDBuildSlotActor* GetOwningSlot() const { return OwningSlot.Get(); }
@@ -59,11 +80,15 @@ private:
 	TWeakObjectPtr<ATTDBuildSlotActor> OwningSlot;
 
 	FName BuildingId;
+	FText DisplayName;
 	ETTDBuildingAttackMode AttackMode = ETTDBuildingAttackMode::InstantDamage;
 	FTTDBattleBuildingRuntimeStats RuntimeStats;
 	TSoftClassPtr<AActor> ProjectileClass;
+	TArray<FTTDNameStack> ConstructionPartCosts;
+	TArray<FTTDNameStack> UpgradePartCosts;
 	float CurrentHealth = 100.0f;
 	float AttackAccumulator = 0.0f;
+	int32 BuildingLevel = 1;
 
 	void TryAttack(float DeltaSeconds);
 	void FireInstantDamage(ATTDBattleEnemyActor* Target);

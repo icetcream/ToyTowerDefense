@@ -228,39 +228,68 @@ bool FTTDResearchSubsystemTests::RunTest(const FString& Parameters)
 
 	TArray<FTTDPartDefinition> NewParts;
 	TestTrue(TEXT("completed toy box can be claimed"), QueueItems.Num() == 1 && ResearchSubsystem->ClaimCompletedToyBox(QueueItems[0].QueueId, NewParts));
-	TestEqual(TEXT("claim discovers two parts"), NewParts.Num(), 2);
-	TestEqual(TEXT("claim adds gear inventory"), ResearchSubsystem->GetPartCount(TEXT("Gear")), 1);
-	TestEqual(TEXT("claim adds spring inventory"), ResearchSubsystem->GetPartCount(TEXT("Spring")), 1);
+	TestEqual(TEXT("claiming a crafted toy box does not directly discover parts"), NewParts.Num(), 0);
+	TestEqual(TEXT("claiming a crafted toy box does not directly add gear inventory"), ResearchSubsystem->GetPartCount(TEXT("Gear")), 0);
+	TestEqual(TEXT("claiming a crafted toy box does not directly add spring inventory"), ResearchSubsystem->GetPartCount(TEXT("Spring")), 0);
+	TestEqual(TEXT("claim adds toy box inventory"), ResearchSubsystem->GetToyBoxCount(TEXT("TestToyBox")), 1);
 	TestEqual(TEXT("claim broadcasts inventory"), InventoryMessageCount, 1);
 	TestEqual(TEXT("claim broadcasts claimed payload"), ClaimMessageCount, 1);
-	TestEqual(TEXT("claim payload includes granted gear"), FindResearchTestStackCount(LastClaimMessage.GrantedParts, TEXT("Gear")), 1);
-	TestEqual(TEXT("claim payload includes current spring inventory"), FindResearchTestStackCount(LastClaimMessage.PartInventory, TEXT("Spring")), 1);
-	TestEqual(TEXT("inventory payload includes gear"), FindResearchTestStackCount(LastInventoryMessage.PartInventory, TEXT("Gear")), 1);
+	TestEqual(TEXT("claim payload has no granted parts before battle opening"), LastClaimMessage.GrantedParts.Num(), 0);
+	TestEqual(TEXT("claim payload includes granted toy box"), FindResearchTestStackCount(LastClaimMessage.GrantedToyBoxes, TEXT("TestToyBox")), 1);
+	TestEqual(TEXT("claim payload includes current toy box inventory"), FindResearchTestStackCount(LastClaimMessage.ToyBoxInventory, TEXT("TestToyBox")), 1);
+	TestEqual(TEXT("inventory payload includes toy box"), FindResearchTestStackCount(LastInventoryMessage.ToyBoxInventory, TEXT("TestToyBox")), 1);
 
-	TestFalse(TEXT("costed diagram still fails with only one gear"), ResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
+	TestFalse(TEXT("costed diagram still fails after crafting toy boxes but not opening them"), ResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
 
 	TestTrue(TEXT("second test toy box can enter queue"), ResearchSubsystem->EnqueueToyBox(TEXT("TestToyBox"), FailureReason));
 	const TArray<FTTDCraftQueueItem> SecondQueueItems = ResearchSubsystem->GetCraftingQueue();
 	TestTrue(TEXT("second completed toy box can be claimed"), SecondQueueItems.Num() == 1 && ResearchSubsystem->ClaimCompletedToyBox(SecondQueueItems[0].QueueId, NewParts));
-	TestEqual(TEXT("second claim increments gear inventory"), ResearchSubsystem->GetPartCount(TEXT("Gear")), 2);
-	TestEqual(TEXT("second claim increments spring inventory"), ResearchSubsystem->GetPartCount(TEXT("Spring")), 2);
+	TestEqual(TEXT("second claim increments toy box inventory"), ResearchSubsystem->GetToyBoxCount(TEXT("TestToyBox")), 2);
 
-	TestTrue(TEXT("costed diagram succeeds with required parts"), ResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
-	TestEqual(TEXT("costed diagram consumes both gears"), ResearchSubsystem->GetPartCount(TEXT("Gear")), 0);
-	TestEqual(TEXT("costed diagram consumes one spring"), ResearchSubsystem->GetPartCount(TEXT("Spring")), 1);
-	TestFalse(TEXT("already researched diagram cannot be researched again"), ResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
+	TestTrue(TEXT("toy box stock can be consumed for battle loadout"), ResearchSubsystem->ConsumeToyBoxes({ FTTDNameStack(TEXT("TestToyBox"), 1) }, FailureReason));
+	TestEqual(TEXT("consuming battle loadout toy box decrements inventory"), ResearchSubsystem->GetToyBoxCount(TEXT("TestToyBox")), 1);
+	TestFalse(TEXT("over-consuming toy boxes is rejected"), ResearchSubsystem->ConsumeToyBoxes({ FTTDNameStack(TEXT("TestToyBox"), 2) }, FailureReason));
+	TestTrue(TEXT("over-consuming toy boxes provides a failure reason"), !FailureReason.IsEmpty());
 
 	TestTrue(TEXT("battery toy box can enter queue"), ResearchSubsystem->EnqueueToyBox(TEXT("BatteryToyBox"), FailureReason));
 	const TArray<FTTDCraftQueueItem> BatteryQueueItems = ResearchSubsystem->GetCraftingQueue();
 	TestTrue(TEXT("battery toy box can be claimed"), BatteryQueueItems.Num() == 1 && ResearchSubsystem->ClaimCompletedToyBox(BatteryQueueItems[0].QueueId, NewParts));
-	TestEqual(TEXT("battery inventory is added"), ResearchSubsystem->GetPartCount(TEXT("Battery")), 1);
-	TestTrue(TEXT("legacy RequiredPartIds fallback succeeds"), ResearchSubsystem->ResearchDiagram(TEXT("LegacyDiagram"), FailureReason));
-	TestEqual(TEXT("legacy fallback consumes one battery"), ResearchSubsystem->GetPartCount(TEXT("Battery")), 0);
+	TestEqual(TEXT("battery toy box inventory is added"), ResearchSubsystem->GetToyBoxCount(TEXT("BatteryToyBox")), 1);
 
 	ClaimHandle.Unregister();
 	InventoryHandle.Unregister();
 	GameInstance->Shutdown();
 	UGameplayStatics::DeleteGameInSlot(Settings->SaveSlotName, 0);
+
+	{
+		UTTDSaveGame* SeededSave = Cast<UTTDSaveGame>(UGameplayStatics::CreateSaveGameObject(UTTDSaveGame::StaticClass()));
+		SeededSave->SaveVersion = UTTDSaveGame::CurrentSaveVersion;
+		SeededSave->PartInventory = {
+			FTTDNameStack(TEXT("Gear"), 2),
+			FTTDNameStack(TEXT("Spring"), 1),
+			FTTDNameStack(TEXT("Battery"), 1)
+		};
+		SeededSave->LastSavedUnixSeconds = FDateTime::UtcNow().ToUnixTimestamp();
+		TestTrue(TEXT("seeded part save can be staged"), UGameplayStatics::SaveGameToSlot(SeededSave, Settings->SaveSlotName, 0));
+
+		TStrongObjectPtr<UGameInstance> ResearchGameInstance(NewObject<UGameInstance>());
+		ResearchGameInstance->Init();
+		UTTDResearchSubsystem* SeededResearchSubsystem = ResearchGameInstance->GetSubsystem<UTTDResearchSubsystem>();
+		TestNotNull(TEXT("seeded research subsystem is available"), SeededResearchSubsystem);
+		if (SeededResearchSubsystem)
+		{
+			TestTrue(TEXT("costed diagram succeeds with required parts"), SeededResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
+			TestEqual(TEXT("costed diagram consumes both gears"), SeededResearchSubsystem->GetPartCount(TEXT("Gear")), 0);
+			TestEqual(TEXT("costed diagram consumes one spring"), SeededResearchSubsystem->GetPartCount(TEXT("Spring")), 0);
+			TestFalse(TEXT("already researched diagram cannot be researched again"), SeededResearchSubsystem->ResearchDiagram(TEXT("CostedDiagram"), FailureReason));
+
+			TestTrue(TEXT("legacy RequiredPartIds fallback succeeds"), SeededResearchSubsystem->ResearchDiagram(TEXT("LegacyDiagram"), FailureReason));
+			TestEqual(TEXT("legacy fallback consumes one battery"), SeededResearchSubsystem->GetPartCount(TEXT("Battery")), 0);
+		}
+		ResearchGameInstance->Shutdown();
+		UGameplayStatics::DeleteGameInSlot(Settings->SaveSlotName, 0);
+	}
+
 	RestoreAll();
 	return true;
 }

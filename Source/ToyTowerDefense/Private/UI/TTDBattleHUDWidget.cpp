@@ -1,5 +1,6 @@
 #include "UI/TTDBattleHUDWidget.h"
 
+#include "Battle/TTDBattleBuildingActor.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/Border.h"
 #include "Components/HorizontalBox.h"
@@ -57,6 +58,18 @@ namespace
 				? FText::FromString(TEXT("无"))
 				: TTDUIDisplayNames::DiagramName(GameInstance, BuildingDefinition.RequiredDiagramId),
 			FText::FromString(TTDUIDisplayNames::JoinPartStacks(GameInstance, BuildingDefinition.PartCosts)));
+	}
+
+	FText BuildRuntimeStatsText(const FTTDBattleBuildingRuntimeStats& Stats)
+	{
+		return FText::Format(
+			FText::FromString(TEXT("生命 {0}  伤害 {1}  范围 {2}\n间隔 {3}s  弹速 {4}  移速 {5}")),
+			FText::AsNumber(FMath::RoundToInt(Stats.MaxHealth)),
+			FText::AsNumber(FMath::RoundToInt(Stats.AttackDamage)),
+			FText::AsNumber(FMath::RoundToInt(Stats.AttackRange)),
+			FText::AsNumber(Stats.AttackInterval),
+			FText::AsNumber(FMath::RoundToInt(Stats.ProjectileSpeed)),
+			FText::AsNumber(FMath::RoundToInt(Stats.MoveSpeed)));
 	}
 
 	int32 FindBattleHUDStackCount(const TArray<FTTDNameStack>& Stacks, const FName Id)
@@ -132,10 +145,16 @@ void UTTDBattleHUDWidget::RefreshSelectedBuilding()
 	const FName SelectedBuildingId = Controller ? Controller->GetSelectedBattleBuildingId() : NAME_None;
 	const FTTDBuildingDefinition* SelectedBuildingDefinition = BattleSubsystem->FindBuildingDefinition(SelectedBuildingId);
 	SelectedText->SetText(SelectedBuildingId.IsNone()
-		? FText::FromString(TEXT("当前选择：未选择"))
+		? FText::FromString(TEXT("当前蓝图：未选择"))
 		: FText::Format(
-			FText::FromString(TEXT("当前选择：{0}")),
+			FText::FromString(TEXT("当前蓝图：{0}")),
 			SelectedBuildingDefinition ? GetBuildingDisplayName(*SelectedBuildingDefinition) : TTDUIDisplayNames::KnownId(SelectedBuildingId)));
+}
+
+void UTTDBattleHUDWidget::SelectPlacedBuilding(ATTDBattleBuildingActor* Building)
+{
+	SelectedPlacedBuilding = Building;
+	RefreshBuildingDetail();
 }
 
 void UTTDBattleHUDWidget::NativeOnInitialized()
@@ -228,10 +247,39 @@ void UTTDBattleHUDWidget::BuildLayout()
 	InfoPanel->AddChild(InfoBox);
 
 	SelectedText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 16, TTDUIStyle::Ink());
+	BuildingCapacityText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 15, TTDUIStyle::Ink());
+	BuildingLevelCapText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 15, TTDUIStyle::Ink());
 	InventoryText = MakeBattleHUDText(WidgetTree, FText::GetEmpty(), 15, TTDUIStyle::MutedInk());
 	InfoBox->AddChildToVerticalBox(SelectedText);
+	UVerticalBoxSlot* CapacitySlot = InfoBox->AddChildToVerticalBox(BuildingCapacityText);
+	CapacitySlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
+	UVerticalBoxSlot* LevelCapSlot = InfoBox->AddChildToVerticalBox(BuildingLevelCapText);
+	LevelCapSlot->SetPadding(FMargin(0.0f, 6.0f, 0.0f, 0.0f));
 	UVerticalBoxSlot* InventorySlot = InfoBox->AddChildToVerticalBox(InventoryText);
 	InventorySlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
+
+	UBorder* DetailPanel = MakeBattleHUDPanel(WidgetTree, FLinearColor(1.0f, 0.96f, 0.84f, 0.90f), FMargin(14.0f));
+	UOverlaySlot* DetailPanelSlot = RootOverlay->AddChildToOverlay(DetailPanel);
+	DetailPanelSlot->SetHorizontalAlignment(HAlign_Left);
+	DetailPanelSlot->SetVerticalAlignment(VAlign_Top);
+	DetailPanelSlot->SetPadding(FMargin(16.0f, 270.0f, 0.0f, 0.0f));
+
+	BuildingDetailBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	DetailPanel->AddChild(BuildingDetailBox);
+	BuildingDetailBox->AddChildToVerticalBox(MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("建筑详情")), 18, TTDUIStyle::Ink(), ETextJustify::Center));
+	BuildingDetailText = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("点击已建建筑查看详情。")), 14, TTDUIStyle::MutedInk());
+	UVerticalBoxSlot* DetailTextSlot = BuildingDetailBox->AddChildToVerticalBox(BuildingDetailText);
+	DetailTextSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 8.0f));
+
+	BuildingUpgradeList = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+	BuildingDetailBox->AddChildToVerticalBox(BuildingUpgradeList);
+
+	FSimpleDelegate SellDelegate;
+	SellDelegate.BindUObject(this, &UTTDBattleHUDWidget::HandleSellSelectedBuildingClicked);
+	SellBuildingButton = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
+	SellBuildingButton->Configure(FText::FromString(TEXT("出售")), false, SellDelegate, ETTDActionButtonVariant::Danger);
+	UVerticalBoxSlot* SellButtonSlot = BuildingDetailBox->AddChildToVerticalBox(SellBuildingButton);
+	SellButtonSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
 
 	UBorder* ActionPanel = MakeBattleHUDPanel(WidgetTree, FLinearColor(0.77f, 0.55f, 0.33f, 0.94f), FMargin(14.0f));
 	UOverlaySlot* ActionPanelSlot = RootOverlay->AddChildToOverlay(ActionPanel);
@@ -312,6 +360,9 @@ void UTTDBattleHUDWidget::BuildActionLists()
 	BuildingList->ClearChildren();
 	ToyBoxList->ClearChildren();
 	ToyBoxActionWidgets.Reset();
+	BuildingActionWidgets.Reset();
+	BuildingCapacityActionWidgets = FTTDBuildingCapacityActionWidgets();
+	BuildingLevelCapActionWidgets = FTTDBuildingLevelCapActionWidgets();
 	LastActionListDiagramIds = BattleSubsystem->GetDiagramIds();
 	LastActionListDiagramIds.Sort(
 		[](const FName& Left, const FName& Right)
@@ -349,6 +400,13 @@ void UTTDBattleHUDWidget::BuildActionLists()
 		UHorizontalBoxSlot* ButtonSlot = BuildingRow->AddChildToHorizontalBox(Button);
 		ButtonSlot->SetVerticalAlignment(VAlign_Center);
 
+		FTTDBuildingActionWidgets ActionWidgets;
+		ActionWidgets.SelectButton = Button;
+		ActionWidgets.DisplayName = GetBuildingDisplayName(BuildingDefinition);
+		ActionWidgets.PartCosts = BuildingDefinition.PartCosts;
+		ActionWidgets.RequiredDiagramId = BuildingDefinition.RequiredDiagramId;
+		BuildingActionWidgets.Add(BuildingId, ActionWidgets);
+
 		UBorder* CostPanel = MakeBattleHUDPanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(9.0f, 7.0f));
 		CostPanel->SetVisibility(ESlateVisibility::Visible);
 		CostPanel->SetToolTipText(BuildBuildingHoverText(GetGameInstance(), BuildingDefinition));
@@ -360,6 +418,115 @@ void UTTDBattleHUDWidget::BuildActionLists()
 
 	UTextBlock* ShopTitle = MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("固定商品商店")), 16, TTDUIStyle::Cream(), ETextJustify::Center);
 	ToyBoxList->AddChildToVerticalBox(ShopTitle);
+
+	if (BattleSubsystem->GetBuildingCapacity() > 0)
+	{
+		UBorder* CapacityCardPanel = MakeBattleHUDPanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(10.0f));
+		UVerticalBoxSlot* CapacityCardSlot = ToyBoxList->AddChildToVerticalBox(CapacityCardPanel);
+		CapacityCardSlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 10.0f));
+
+		UVerticalBox* CapacityCardBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+		CapacityCardPanel->AddChild(CapacityCardBox);
+		CapacityCardBox->AddChildToVerticalBox(MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("建筑上限 +1")), 17, TTDUIStyle::Ink(), ETextJustify::Center));
+
+		UTextBlock* CapacitySummaryText = MakeBattleHUDText(
+			WidgetTree,
+			FText::Format(
+				FText::FromString(TEXT("价格 {0}  当前 {1}/{2}")),
+				FText::AsNumber(BattleSubsystem->GetBuildingCapacityPurchaseCost()),
+				FText::AsNumber(BattleSubsystem->GetBuildingCount()),
+				FText::AsNumber(BattleSubsystem->GetBuildingCapacity())),
+			14,
+			TTDUIStyle::MutedInk(),
+			ETextJustify::Center);
+		CapacityCardBox->AddChildToVerticalBox(CapacitySummaryText);
+
+		UTTDActionButtonWidget* CapacityBuyButton = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
+		FSimpleDelegate CapacityBuyDelegate;
+		CapacityBuyDelegate.BindWeakLambda(
+			this,
+			[this]()
+			{
+				FText FailureReason;
+				if (UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr)
+				{
+					if (BattleSubsystem->BuyBuildingCapacity(FailureReason))
+					{
+						SetStatusMessage(FText::FromString(TEXT("建筑上限已增加。")));
+					}
+					else
+					{
+						SetStatusMessage(FailureReason);
+					}
+				}
+			});
+		CapacityBuyButton->Configure(
+			FText::FromString(TEXT("购买")),
+			BattleSubsystem->GetCurrency() >= BattleSubsystem->GetBuildingCapacityPurchaseCost(),
+			CapacityBuyDelegate,
+			ETTDActionButtonVariant::Primary);
+		UVerticalBoxSlot* CapacityBuySlot = CapacityCardBox->AddChildToVerticalBox(CapacityBuyButton);
+		CapacityBuySlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
+
+		BuildingCapacityActionWidgets.SummaryText = CapacitySummaryText;
+		BuildingCapacityActionWidgets.BuyButton = CapacityBuyButton;
+		BuildingCapacityActionWidgets.PurchaseCost = BattleSubsystem->GetBuildingCapacityPurchaseCost();
+	}
+
+	if (BattleSubsystem->GetBuildingLevelCapPurchaseCost() > 0)
+	{
+		UBorder* LevelCapCardPanel = MakeBattleHUDPanel(WidgetTree, TTDUIStyle::LightPaper(), FMargin(10.0f));
+		UVerticalBoxSlot* LevelCapCardSlot = ToyBoxList->AddChildToVerticalBox(LevelCapCardPanel);
+		LevelCapCardSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 10.0f));
+
+		UVerticalBox* LevelCapCardBox = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+		LevelCapCardPanel->AddChild(LevelCapCardBox);
+		LevelCapCardBox->AddChildToVerticalBox(MakeBattleHUDText(WidgetTree, FText::FromString(TEXT("等级上限 +1")), 17, TTDUIStyle::Ink(), ETextJustify::Center));
+
+		UTextBlock* LevelCapSummaryText = MakeBattleHUDText(
+			WidgetTree,
+			FText::Format(
+				FText::FromString(TEXT("价格 {0}  当前 {1}")),
+				FText::AsNumber(BattleSubsystem->GetBuildingLevelCapPurchaseCost()),
+				FText::AsNumber(BattleSubsystem->GetBuildingLevelCap())),
+			14,
+			TTDUIStyle::MutedInk(),
+			ETextJustify::Center);
+		LevelCapCardBox->AddChildToVerticalBox(LevelCapSummaryText);
+
+		UTTDActionButtonWidget* LevelCapBuyButton = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
+		FSimpleDelegate LevelCapBuyDelegate;
+		LevelCapBuyDelegate.BindWeakLambda(
+			this,
+			[this]()
+			{
+				FText FailureReason;
+				if (UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr)
+				{
+					if (BattleSubsystem->BuyBuildingLevelCap(FailureReason))
+					{
+						SetStatusMessage(FText::FromString(TEXT("建筑等级上限已增加。")));
+						RefreshBuildingDetail();
+					}
+					else
+					{
+						SetStatusMessage(FailureReason);
+					}
+				}
+			});
+		LevelCapBuyButton->Configure(
+			FText::FromString(TEXT("购买")),
+			BattleSubsystem->GetCurrency() >= BattleSubsystem->GetBuildingLevelCapPurchaseCost(),
+			LevelCapBuyDelegate,
+			ETTDActionButtonVariant::Primary);
+		UVerticalBoxSlot* LevelCapBuySlot = LevelCapCardBox->AddChildToVerticalBox(LevelCapBuyButton);
+		LevelCapBuySlot->SetPadding(FMargin(0.0f, 8.0f, 0.0f, 0.0f));
+
+		BuildingLevelCapActionWidgets.SummaryText = LevelCapSummaryText;
+		BuildingLevelCapActionWidgets.BuyButton = LevelCapBuyButton;
+		BuildingLevelCapActionWidgets.PurchaseCost = BattleSubsystem->GetBuildingLevelCapPurchaseCost();
+	}
+
 	const TArray<FTTDNameStack> ToyBoxStacks = BattleSubsystem->GetToyBoxStacks();
 	for (const FTTDToyBoxRewardDefinition& ToyBoxDefinition : BattleSubsystem->GetToyBoxDefinitions())
 	{
@@ -438,6 +605,8 @@ void UTTDBattleHUDWidget::BuildActionLists()
 		ActionWidgets.PurchaseCost = ToyBoxDefinition.PurchaseCost;
 		ToyBoxActionWidgets.Add(ToyBoxId, ActionWidgets);
 	}
+
+	RefreshBuildingActionStates();
 }
 
 void UTTDBattleHUDWidget::RefreshActionListStates()
@@ -449,6 +618,35 @@ void UTTDBattleHUDWidget::RefreshActionListStates()
 	}
 
 	const int32 Currency = BattleSubsystem->GetCurrency();
+	if (UTextBlock* SummaryText = BuildingCapacityActionWidgets.SummaryText.Get())
+	{
+		SummaryText->SetText(FText::Format(
+			FText::FromString(TEXT("价格 {0}  当前 {1}/{2}")),
+			FText::AsNumber(BattleSubsystem->GetBuildingCapacityPurchaseCost()),
+			FText::AsNumber(BattleSubsystem->GetBuildingCount()),
+			FText::AsNumber(BattleSubsystem->GetBuildingCapacity())));
+	}
+	if (UTTDActionButtonWidget* BuyButton = BuildingCapacityActionWidgets.BuyButton.Get())
+	{
+		BuyButton->SetLabelAndEnabled(
+			FText::FromString(TEXT("购买")),
+			BattleSubsystem->GetBuildingCapacity() > 0 && Currency >= BattleSubsystem->GetBuildingCapacityPurchaseCost());
+	}
+
+	if (UTextBlock* SummaryText = BuildingLevelCapActionWidgets.SummaryText.Get())
+	{
+		SummaryText->SetText(FText::Format(
+			FText::FromString(TEXT("价格 {0}  当前 {1}")),
+			FText::AsNumber(BattleSubsystem->GetBuildingLevelCapPurchaseCost()),
+			FText::AsNumber(BattleSubsystem->GetBuildingLevelCap())));
+	}
+	if (UTTDActionButtonWidget* BuyButton = BuildingLevelCapActionWidgets.BuyButton.Get())
+	{
+		BuyButton->SetLabelAndEnabled(
+			FText::FromString(TEXT("购买")),
+			BattleSubsystem->GetBuildingLevelCapPurchaseCost() > 0 && Currency >= BattleSubsystem->GetBuildingLevelCapPurchaseCost());
+	}
+
 	const TArray<FTTDNameStack> ToyBoxStacks = BattleSubsystem->GetToyBoxStacks();
 	for (TPair<FName, FTTDToyBoxActionWidgets>& Pair : ToyBoxActionWidgets)
 	{
@@ -473,6 +671,66 @@ void UTTDBattleHUDWidget::RefreshActionListStates()
 		{
 			OpenButton->SetLabelAndEnabled(FText::FromString(TEXT("打开")), OwnedCount > 0);
 		}
+	}
+
+	RefreshBuildingActionStates();
+	RefreshBuildingDetail();
+}
+
+void UTTDBattleHUDWidget::RefreshBuildingActionStates()
+{
+	const UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr;
+	if (!BattleSubsystem)
+	{
+		return;
+	}
+
+	const TArray<FName> DiagramIds = BattleSubsystem->GetDiagramIds();
+	const TArray<FTTDNameStack> PartStacks = BattleSubsystem->GetPartStacks();
+	const bool bHasCapacity = BattleSubsystem->GetBuildingCapacity() <= 0
+		|| BattleSubsystem->GetBuildingCount() < BattleSubsystem->GetBuildingCapacity();
+
+	for (TPair<FName, FTTDBuildingActionWidgets>& Pair : BuildingActionWidgets)
+	{
+		const FName BuildingId = Pair.Key;
+		FTTDBuildingActionWidgets& ActionWidgets = Pair.Value;
+		UTTDActionButtonWidget* Button = ActionWidgets.SelectButton.Get();
+		if (!Button)
+		{
+			continue;
+		}
+
+		bool bHasDiagram = ActionWidgets.RequiredDiagramId.IsNone() || DiagramIds.Contains(ActionWidgets.RequiredDiagramId);
+		bool bHasParts = true;
+		for (const FTTDNameStack& Cost : ActionWidgets.PartCosts)
+		{
+			if (Cost.Id.IsNone() || Cost.Count <= 0)
+			{
+				continue;
+			}
+
+			if (FindBattleHUDStackCount(PartStacks, Cost.Id) < Cost.Count)
+			{
+				bHasParts = false;
+				break;
+			}
+		}
+
+		FText Label = ActionWidgets.DisplayName;
+		if (!bHasCapacity)
+		{
+			Label = FText::Format(FText::FromString(TEXT("{0}\n建筑上限")), ActionWidgets.DisplayName);
+		}
+		else if (!bHasDiagram)
+		{
+			Label = FText::Format(FText::FromString(TEXT("{0}\n缺少图纸")), ActionWidgets.DisplayName);
+		}
+		else if (!bHasParts)
+		{
+			Label = FText::Format(FText::FromString(TEXT("{0}\n零件不足")), ActionWidgets.DisplayName);
+		}
+
+		Button->SetLabelAndEnabled(Label, bHasCapacity && bHasDiagram && bHasParts && BattleSubsystem->IsBuildingAvailable(BuildingId));
 	}
 }
 
@@ -534,10 +792,13 @@ void UTTDBattleHUDWidget::RefreshFromBattleSubsystem()
 	RefreshPhaseAndWaveText(*BattleSubsystem, true);
 	RefreshProgressText(BattleSubsystem->GetProgress(), BattleSubsystem->GetRemainingEnemyWeight(), BattleSubsystem->GetTotalEnemyWeight());
 	RefreshCurrencyText(BattleSubsystem->GetCurrency());
+	RefreshBuildingCapacityText(*BattleSubsystem);
+	RefreshBuildingLevelCapText(*BattleSubsystem);
 	RefreshCastleHealthText(BattleSubsystem->GetCastleCurrentHealth(), BattleSubsystem->GetCastleMaxHealth());
 	InventoryText->SetText(BuildInventoryText());
 	RefreshActionListStates();
 	RefreshSelectedBuilding();
+	RefreshBuildingDetail();
 	RefreshVictoryOverlay(*BattleSubsystem, true);
 	TryReturnAfterVictory(*BattleSubsystem);
 }
@@ -625,6 +886,150 @@ void UTTDBattleHUDWidget::RefreshCurrencyText(const int32 Currency)
 	}
 }
 
+void UTTDBattleHUDWidget::RefreshBuildingCapacityText(const UTTDBattleWorldSubsystem& BattleSubsystem)
+{
+	if (!BuildingCapacityText)
+	{
+		return;
+	}
+
+	if (BattleSubsystem.GetBuildingCapacity() <= 0)
+	{
+		BuildingCapacityText->SetText(FText::FromString(TEXT("建筑数量：不限")));
+		return;
+	}
+
+	BuildingCapacityText->SetText(FText::Format(
+		FText::FromString(TEXT("建筑数量：{0}/{1}")),
+		FText::AsNumber(BattleSubsystem.GetBuildingCount()),
+		FText::AsNumber(BattleSubsystem.GetBuildingCapacity())));
+}
+
+void UTTDBattleHUDWidget::RefreshBuildingLevelCapText(const UTTDBattleWorldSubsystem& BattleSubsystem)
+{
+	if (BuildingLevelCapText)
+	{
+		BuildingLevelCapText->SetText(FText::Format(
+			FText::FromString(TEXT("等级上限：{0}")),
+			FText::AsNumber(BattleSubsystem.GetBuildingLevelCap())));
+	}
+}
+
+void UTTDBattleHUDWidget::RefreshBuildingDetail()
+{
+	UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr;
+	ATTDBattleBuildingActor* Building = SelectedPlacedBuilding.Get();
+	if (!BattleSubsystem || !BattleSubsystem->IsActiveBuilding(Building))
+	{
+		SelectedPlacedBuilding.Reset();
+		if (BuildingDetailText)
+		{
+			BuildingDetailText->SetText(FText::FromString(TEXT("点击已建建筑查看详情。")));
+		}
+		if (BuildingUpgradeList)
+		{
+			BuildingUpgradeList->ClearChildren();
+		}
+		if (SellBuildingButton)
+		{
+			SellBuildingButton->SetLabelAndEnabled(FText::FromString(TEXT("出售")), false);
+		}
+		return;
+	}
+
+	const FTTDBuildingDefinition* BuildingDefinition = BattleSubsystem->FindBuildingDefinition(Building->GetBuildingId());
+	const FText BuildingName = BuildingDefinition
+		? GetBuildingDisplayName(*BuildingDefinition)
+		: TTDUIDisplayNames::KnownId(Building->GetBuildingId());
+
+	if (BuildingDetailText)
+	{
+		BuildingDetailText->SetText(FText::Format(
+			FText::FromString(TEXT("{0}\n等级 {1}/{2}  生命 {3}/{4}\n{5}\n建造消耗：{6}\n升级消耗：{7}")),
+			BuildingName,
+			FText::AsNumber(Building->GetBuildingLevel()),
+			FText::AsNumber(BattleSubsystem->GetBuildingLevelCap()),
+			FText::AsNumber(FMath::RoundToInt(Building->GetCurrentHealth())),
+			FText::AsNumber(FMath::RoundToInt(Building->GetRuntimeStats().MaxHealth)),
+			BuildRuntimeStatsText(Building->GetRuntimeStats()),
+			FText::FromString(TTDUIDisplayNames::JoinPartStacks(GetGameInstance(), Building->GetConstructionPartCosts())),
+			FText::FromString(TTDUIDisplayNames::JoinPartStacks(GetGameInstance(), Building->GetUpgradePartCosts()))));
+	}
+
+	if (BuildingUpgradeList)
+	{
+		BuildingUpgradeList->ClearChildren();
+
+		if (!BuildingDefinition || BuildingDefinition->UpgradeOptions.IsEmpty())
+		{
+			BuildingUpgradeList->AddChildToVerticalBox(MakeBattleHUDText(
+				WidgetTree,
+				FText::FromString(TEXT("未配置可用升级零件。")),
+				13,
+				TTDUIStyle::MutedInk(),
+				ETextJustify::Center));
+		}
+		else
+		{
+			for (const FTTDBattleBuildingUpgradeOption& UpgradeOption : BuildingDefinition->UpgradeOptions)
+			{
+				if (UpgradeOption.PartId.IsNone())
+				{
+					continue;
+				}
+
+				FText FailureReason;
+				const bool bCanUpgrade = BattleSubsystem->CanUpgradeBuilding(Building, UpgradeOption.PartId, FailureReason);
+				const FName UpgradePartId = UpgradeOption.PartId;
+				const int32 PartCost = FMath::Max(1, UpgradeOption.PartCost);
+
+				UTTDActionButtonWidget* UpgradeButton = WidgetTree->ConstructWidget<UTTDActionButtonWidget>(UTTDActionButtonWidget::StaticClass());
+				FSimpleDelegate UpgradeDelegate;
+				UpgradeDelegate.BindWeakLambda(
+					this,
+					[this, UpgradePartId]()
+					{
+						FText FailureReason;
+						ATTDBattleBuildingActor* SelectedBuilding = SelectedPlacedBuilding.Get();
+						if (UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr)
+						{
+							if (BattleSubsystem->UpgradeBuilding(SelectedBuilding, UpgradePartId, FailureReason))
+							{
+								SetStatusMessage(FText::FromString(TEXT("建筑已升级。")));
+								RefreshFromBattleSubsystem();
+							}
+							else
+							{
+								SetStatusMessage(FailureReason);
+								RefreshBuildingDetail();
+							}
+						}
+					});
+				const FText ButtonLabel = FText::Format(
+					FText::FromString(TEXT("{0} x{1} 升级")),
+					TTDUIDisplayNames::PartName(GetGameInstance(), UpgradePartId),
+					FText::AsNumber(PartCost));
+				UpgradeButton->Configure(ButtonLabel, bCanUpgrade, UpgradeDelegate, ETTDActionButtonVariant::Secondary);
+				if (!FailureReason.IsEmpty())
+				{
+					UpgradeButton->SetHoverText(FailureReason);
+				}
+				UVerticalBoxSlot* UpgradeSlot = BuildingUpgradeList->AddChildToVerticalBox(UpgradeButton);
+				UpgradeSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, 6.0f));
+			}
+		}
+	}
+
+	if (SellBuildingButton)
+	{
+		SellBuildingButton->SetLabelAndEnabled(
+			FText::Format(
+				FText::FromString(TEXT("出售返还：{0}")),
+				FText::FromString(TTDUIDisplayNames::JoinPartStacks(GetGameInstance(), Building->GetConstructionPartCosts()))),
+			true);
+	}
+}
+
 void UTTDBattleHUDWidget::RefreshCastleHealthText(const float CurrentHealth, const float MaxHealth)
 {
 	if (CastleText)
@@ -699,6 +1104,15 @@ void UTTDBattleHUDWidget::HandleBattleCurrencyChanged(FGameplayTag Channel, cons
 
 void UTTDBattleHUDWidget::HandleBattleInventoryChanged(FGameplayTag Channel, const FTTDBattleInventoryChangedMessage& Message)
 {
+	const UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr;
+	if (BattleSubsystem)
+	{
+		RefreshBuildingCapacityText(*BattleSubsystem);
+		RefreshBuildingLevelCapText(*BattleSubsystem);
+		RefreshBuildingActionStates();
+		RefreshBuildingDetail();
+	}
+
 	if (InventoryText)
 	{
 		InventoryText->SetText(BuildInventoryText(Message.DiagramIds, Message.Parts, Message.ToyBoxes));
@@ -756,4 +1170,27 @@ void UTTDBattleHUDWidget::HandleTestCheatClicked()
 
 	SetStatusMessage(Summary);
 	RefreshFromBattleSubsystem();
+}
+
+void UTTDBattleHUDWidget::HandleSellSelectedBuildingClicked()
+{
+	ATTDBattleBuildingActor* Building = SelectedPlacedBuilding.Get();
+	FText FailureReason;
+	if (UTTDBattleWorldSubsystem* BattleSubsystem = GetWorld() ? GetWorld()->GetSubsystem<UTTDBattleWorldSubsystem>() : nullptr)
+	{
+		if (BattleSubsystem->SellBuilding(Building, FailureReason))
+		{
+			SelectedPlacedBuilding.Reset();
+			SetStatusMessage(FText::FromString(TEXT("建筑已出售，已返还建造零件。")));
+			RefreshFromBattleSubsystem();
+			return;
+		}
+	}
+	else
+	{
+		FailureReason = FText::FromString(TEXT("战斗系统不可用。"));
+	}
+
+	SetStatusMessage(FailureReason);
+	RefreshBuildingDetail();
 }

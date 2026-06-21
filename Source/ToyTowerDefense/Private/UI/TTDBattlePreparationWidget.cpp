@@ -247,7 +247,7 @@ void UTTDBattlePreparationWidget::LoadData()
 			if (BattleSubsystem && BattleSubsystem->FindToyBoxDefinition(Entry.ItemId))
 			{
 				ToyBoxEntries.Add(Entry);
-				BaseToyBoxStock.Add(Entry.ItemId, FMath::Max(0, LevelDefinition.MaxSelectedToyBoxes));
+				BaseToyBoxStock.Add(Entry.ItemId, ResearchSubsystem->GetToyBoxCount(Entry.ItemId));
 			}
 		}
 	}

@@ -48,6 +48,10 @@ namespace
 		Level.StartingParts = { FTTDNameStack(TEXT("Gear"), 5), FTTDNameStack(TEXT("Spring"), 3) };
 		Level.StartingToyBoxes = { FTTDNameStack(TEXT("BasicToyBox"), 1) };
 		Level.StartingCurrency = 10;
+		Level.StartingBuildingCapacity = 3;
+		Level.BuildingCapacityPurchaseCost = 5;
+		Level.StartingBuildingLevelCap = 1;
+		Level.BuildingLevelCapPurchaseCost = 4;
 		Level.MaxSelectedDiagrams = 2;
 		Level.MaxSelectedToyBoxes = 2;
 		Level.PreparationDurationSeconds = 0.2f;
@@ -89,6 +93,11 @@ namespace
 		BasicTower.BaseStats.AttackRange = 1000.0f;
 		BasicTower.BaseStats.AttackInterval = 0.5f;
 		BasicTower.BaseStats.MaxHealth = 50.0f;
+		FTTDBattleBuildingUpgradeOption GearUpgrade;
+		GearUpgrade.PartId = TEXT("Gear");
+		GearUpgrade.PartCost = 1;
+		GearUpgrade.Modifiers = { { ETTDBattleAttribute::AttackDamage, ETTDAttributeModifierOp::Add, 3.0f } };
+		BasicTower.UpgradeOptions = { GearUpgrade };
 		BuildingTable->AddRow(TEXT("BasicTower"), BasicTower);
 
 		FTTDBuildingDefinition MissingDiagramTower = BasicTower;
@@ -264,6 +273,18 @@ namespace
 				return BuildingDefinition.BuildingId == BuildingId;
 			});
 	}
+
+	int32 FindBattleTestStackCount(const TArray<FTTDNameStack>& Stacks, const FName Id)
+	{
+		for (const FTTDNameStack& Stack : Stacks)
+		{
+			if (Stack.Id == Id)
+			{
+				return FMath::Max(0, Stack.Count);
+			}
+		}
+		return 0;
+	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -344,6 +365,10 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 		ResetSettingsForBattleTest(Settings);
 		FTTDBattleTestTables Tables;
 		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("NoSlotStartupValidation")))
+		{
+			Level->bAllowArbitraryBuildPlacement = false;
+		}
 		Tables.Configure(Settings);
 
 		UWorld* NoSlotWorld = CreateBattleTestWorld();
@@ -366,6 +391,38 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 			}
 
 			DestroyBattleTestWorld(NoSlotWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("ArbitraryPlacementNoSlotStartupValidation")))
+		{
+			Level->bAllowArbitraryBuildPlacement = true;
+		}
+		Tables.Configure(Settings);
+
+		UWorld* ArbitraryNoSlotWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("arbitrary placement no slot test world is created"), ArbitraryNoSlotWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = ArbitraryNoSlotWorld->SpawnActor<ATTDBattleSpawnPointActor>(FVector(300.0f, 0.0f, 0.0f), FRotator::ZeroRotator);
+			if (SpawnPoint)
+			{
+				SpawnPoint->ConfigureSpawnPoint(TEXT("Edge"));
+			}
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = ArbitraryNoSlotWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("arbitrary placement no slot battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem)
+			{
+				FText FailureReason;
+				TestTrue(TEXT("battle can start without placed slots when arbitrary placement is enabled"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				TestTrue(TEXT("arbitrary placement can build without placed slots"), BattleSubsystem->TryBuildAtLocation(TEXT("BasicTower"), FVector(300.0f, 300.0f, 0.0f), FailureReason));
+			}
+
+			DestroyBattleTestWorld(ArbitraryNoSlotWorld);
 		}
 	}
 
@@ -611,6 +668,154 @@ bool FTTDBattleSystemTests::RunTest(const FString& Parameters)
 			}
 
 			DestroyBattleTestWorld(LoadoutWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("BuildingCapacityShop")))
+		{
+			Level->StartingBuildingCapacity = 1;
+			Level->BuildingCapacityPurchaseCost = 5;
+		}
+		if (FTTDBuildingDefinition* BasicTower = Tables.BuildingTable->FindRow<FTTDBuildingDefinition>(TEXT("BasicTower"), TEXT("BuildingCapacityShop")))
+		{
+			BasicTower->PartCosts.Reset();
+		}
+		Tables.Configure(Settings);
+
+		UWorld* BuildingCapacityWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("building capacity shop test world is created"), BuildingCapacityWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(BuildingCapacityWorld, SpawnPoint, Slot);
+			ATTDBuildSlotActor* ExtraSlot = SpawnSlot(BuildingCapacityWorld, TEXT("ExtraSlot"), FVector(0.0f, 220.0f, 0.0f));
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = BuildingCapacityWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("building capacity battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem && Slot && ExtraSlot)
+			{
+				FText FailureReason;
+				TestTrue(TEXT("building capacity battle starts"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				TestEqual(TEXT("configured starting building capacity is exposed"), BattleSubsystem->GetBuildingCapacity(), 1);
+				TestTrue(TEXT("first building fits capacity"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), Slot, FailureReason));
+				TestEqual(TEXT("building count tracks placed buildings"), BattleSubsystem->GetBuildingCount(), 1);
+				TestFalse(TEXT("second building is blocked by capacity"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), ExtraSlot, FailureReason));
+				TestTrue(TEXT("building capacity can be purchased"), BattleSubsystem->BuyBuildingCapacity(FailureReason));
+				TestEqual(TEXT("purchased building capacity increments cap"), BattleSubsystem->GetBuildingCapacity(), 2);
+				TestTrue(TEXT("second building succeeds after capacity purchase"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), ExtraSlot, FailureReason));
+				TestEqual(TEXT("capacity purchase spends configured currency"), BattleSubsystem->GetCurrency(), 5);
+			}
+
+			DestroyBattleTestWorld(BuildingCapacityWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("BuildingUpgradeAndSell")))
+		{
+			Level->StartingBuildingLevelCap = 1;
+			Level->BuildingLevelCapPurchaseCost = 4;
+			Level->StartingCurrency = 10;
+			Level->StartingParts = { FTTDNameStack(TEXT("Gear"), 5) };
+		}
+		Tables.Configure(Settings);
+
+		UWorld* BuildingUpgradeWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("building upgrade and sell test world is created"), BuildingUpgradeWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(BuildingUpgradeWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = BuildingUpgradeWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("building upgrade battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem && Slot)
+			{
+				FText FailureReason;
+				TestTrue(TEXT("building upgrade battle starts"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				TestEqual(TEXT("configured starting building level cap is exposed"), BattleSubsystem->GetBuildingLevelCap(), 1);
+				TestTrue(TEXT("basic tower can be built for upgrade test"), BattleSubsystem->TryBuildOnSlot(TEXT("BasicTower"), Slot, FailureReason));
+
+				ATTDBattleBuildingActor* Building = Cast<ATTDBattleBuildingActor>(Slot->GetOccupyingBuilding());
+				TestNotNull(TEXT("upgrade test building exists"), Building);
+				if (Building)
+				{
+					TestEqual(TEXT("new buildings start at level one"), Building->GetBuildingLevel(), 1);
+					TestFalse(TEXT("level cap blocks upgrade before purchase"), BattleSubsystem->UpgradeBuilding(Building, TEXT("Gear"), FailureReason));
+					TestTrue(TEXT("building level cap can be purchased"), BattleSubsystem->BuyBuildingLevelCap(FailureReason));
+					TestEqual(TEXT("purchased building level cap increments cap"), BattleSubsystem->GetBuildingLevelCap(), 2);
+
+					const int32 GearBeforeUpgrade = FindBattleTestStackCount(BattleSubsystem->GetPartStacks(), TEXT("Gear"));
+					TestTrue(TEXT("configured part upgrades building"), BattleSubsystem->UpgradeBuilding(Building, TEXT("Gear"), FailureReason));
+					TestEqual(TEXT("building level increments after upgrade"), Building->GetBuildingLevel(), 2);
+					TestEqual(TEXT("upgrade modifier changes attack damage"), Building->GetRuntimeStats().AttackDamage, 8.0f);
+					TestEqual(TEXT("upgrade consumes configured part count"), FindBattleTestStackCount(BattleSubsystem->GetPartStacks(), TEXT("Gear")), GearBeforeUpgrade - 1);
+					TestFalse(TEXT("upgrade is blocked again at new cap"), BattleSubsystem->UpgradeBuilding(Building, TEXT("Gear"), FailureReason));
+
+					const int32 GearBeforeSell = FindBattleTestStackCount(BattleSubsystem->GetPartStacks(), TEXT("Gear"));
+					TestTrue(TEXT("building can be sold"), BattleSubsystem->SellBuilding(Building, FailureReason));
+					TestNull(TEXT("sold building clears owning slot"), Slot->GetOccupyingBuilding());
+					TestEqual(TEXT("sell refunds construction costs only"), FindBattleTestStackCount(BattleSubsystem->GetPartStacks(), TEXT("Gear")), GearBeforeSell + 2);
+				}
+			}
+
+			DestroyBattleTestWorld(BuildingUpgradeWorld);
+		}
+	}
+
+	{
+		ResetSettingsForBattleTest(Settings);
+		FTTDBattleTestTables Tables;
+		Tables.AddDefaultRows();
+		if (FTTDBattleLevelDefinition* Level = Tables.LevelTable->FindRow<FTTDBattleLevelDefinition>(TEXT("TestLevel"), TEXT("ArbitraryPlacement")))
+		{
+			Level->StartingParts = { FTTDNameStack(TEXT("Gear"), 8) };
+			Level->bAllowArbitraryBuildPlacement = true;
+			Level->ArbitraryBuildMinSpacing = 180.0f;
+		}
+		Tables.Configure(Settings);
+
+		UWorld* ArbitraryPlacementWorld = CreateBattleTestWorld();
+		if (TestNotNull(TEXT("arbitrary placement test world is created"), ArbitraryPlacementWorld))
+		{
+			ATTDBattleSpawnPointActor* SpawnPoint = nullptr;
+			ATTDBuildSlotActor* Slot = nullptr;
+			SpawnRequiredBattleActors(ArbitraryPlacementWorld, SpawnPoint, Slot);
+
+			UTTDBattleWorldSubsystem* BattleSubsystem = ArbitraryPlacementWorld->GetSubsystem<UTTDBattleWorldSubsystem>();
+			TestNotNull(TEXT("arbitrary placement battle subsystem is available"), BattleSubsystem);
+			if (BattleSubsystem)
+			{
+				FText FailureReason;
+				TestTrue(TEXT("arbitrary placement battle starts"), BattleSubsystem->StartDefaultBattle(FailureReason));
+				TestTrue(TEXT("building can be placed at arbitrary ground location"), BattleSubsystem->TryBuildAtLocation(TEXT("BasicTower"), FVector(350.0f, 350.0f, 0.0f), FailureReason));
+				TestEqual(TEXT("arbitrary placement creates one active building"), BattleSubsystem->GetBuildingCount(), 1);
+				TestFalse(TEXT("arbitrary placement rejects locations too close to an existing building"), BattleSubsystem->TryBuildAtLocation(TEXT("BasicTower"), FVector(360.0f, 350.0f, 0.0f), FailureReason));
+				TestTrue(TEXT("arbitrary placement allows a separated second building"), BattleSubsystem->TryBuildAtLocation(TEXT("BasicTower"), FVector(700.0f, 350.0f, 0.0f), FailureReason));
+				TestEqual(TEXT("arbitrary placement tracks second building"), BattleSubsystem->GetBuildingCount(), 2);
+
+				BattleSubsystem->EndBattle(ETTDBattleState::Defeat);
+				BattleSubsystem->ClearEndedBattle();
+
+				int32 RuntimeSlotCount = 0;
+				for (TActorIterator<ATTDBuildSlotActor> It(ArbitraryPlacementWorld); It; ++It)
+				{
+					if (It->IsRuntimeGeneratedSlot() && !It->IsActorBeingDestroyed())
+					{
+						++RuntimeSlotCount;
+					}
+				}
+				TestEqual(TEXT("clearing battle removes runtime arbitrary build slots"), RuntimeSlotCount, 0);
+			}
+
+			DestroyBattleTestWorld(ArbitraryPlacementWorld);
 		}
 	}
 
