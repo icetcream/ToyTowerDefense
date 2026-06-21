@@ -44,5 +44,11 @@ CrashReportClient/
 Thumbs.db
 desktop.ini
 
+# Local working documents. Only the two delivered planning docs are tracked.
+/docs/*
+!/docs/
+!/docs/策划须知.md
+!/docs/如何配置.md
+
 # Keep UE project content/config/source/assets tracked.
 # Do not ignore binary content assets such as .uasset and .umap.
